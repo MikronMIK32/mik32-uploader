@@ -198,7 +198,7 @@ def write_words(words: list[int], write_by_word = False, read_through_apb = Fals
     @read_through_apb: if True, check written words through APB instead of AHB-Lite
 
     TODO: implement setting byte array offset, add error handling, 
-    improve progress visualisation, add option check page immidiately after writing
+    improve progress visualization, add option check page immidiately after writing
     """
     print(f"Write {len(words*4)} bytes")
     with OpenOcdTclRpc() as openocd:

@@ -1,3 +1,8 @@
+import shlex
+from tclrpc import OpenOcdTclRpc
+import argparse
+import sys
+import subprocess
 import mik32_eeprom
 import mik32_spifi
 from typing import Iterable
@@ -73,7 +78,7 @@ def parse_hex(file: str) -> dict:
                 #     data_bytes = word_bytes.reverse()
                 # print("data words: ", data_words)
             case 1:  # End of File Record
-                print("End of File")
+                # print("End of File")
                 add_memory_block()
             case 2:  # Extended Segment Address Record
                 print("Record 2: Extended Segment Address Record")
@@ -89,9 +94,9 @@ def parse_hex(file: str) -> dict:
                 print("ERROR: unimplemented record type 4 on line %i" % (i+1))
                 is_error = True
             case 5:  # Start Linear Address Record
-                print("Start Linear Address Record")
-                print("ERROR: unimplemented record type 5 on line %i" % (i+1))
-                is_error = True
+                print("Start Linear Address is 0x%s (line %i)" %
+                      (data_bytes_line, (i+1)))
+                print("MIK32 MCU does not support arbitrary start address")
             case _:
                 print("ERROR: unexpected record type %i on line %i" %
                       (rectype, i+1))
@@ -157,3 +162,45 @@ def upload_file(filename: str, boot_source: str = "eeprom"):
     else:
         raise Exception("Unsupported boot source, use eeprom or spifi")
 
+
+def show_file(filename: str, boot_source: str = "eeprom"):
+    if filename.endswith(".bin"):
+        content = parse_bin(filename)
+    elif filename.endswith(".hex"):
+        content = parse_hex(filename)
+    else:
+        raise Exception("Unsupported file format")
+
+    if type(content) is list:
+        print(content)
+    elif type(content) is dict:
+        print(content[0])
+
+
+def createParser():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('filepath', nargs='?')
+    parser.add_argument('--show-file', action="store_const", const=True)
+    parser.add_argument('--no-upload', action="store_const", const=True)
+    parser.add_argument('-b', '--boot-mode', default='eeprom')
+
+    return parser
+
+
+if __name__ == '__main__':
+    parser = createParser()
+    namespace = parser.parse_args()
+
+    if namespace.show_file:
+        show_file(namespace.filepath)
+    if namespace.filepath:
+        if namespace.no_upload == None:
+            upload_file(namespace.filepath, namespace.boot_mode)
+    else:
+        print("Nothing to upload")
+
+
+# cmd = shlex.split("C://Users//shche//Desktop//MK32_Burner//openocd//bin//openocd.exe -s C://Users//shche//Desktop//MK32_Burner//openocd//share//openocd//scripts -f interface/ftdi/m-link.cfg -f target/mcu32.cfg")
+# subprocess.Popen(cmd, shell=True, stdout=subprocess.DEVNULL)
+# upload_file("C://Users//shche//Documents//PlatformIO//Projects//irq_test_compare//.pio//build//mik32-bluepill-v0//firmware.hex", "spifi")
+# show_file("C://Users//shche//Documents//PlatformIO//Projects//irq_test_compare//.pio//build//mik32-bluepill-v0//firmware.hex", "spifi")

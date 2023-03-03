@@ -368,7 +368,7 @@ def spifi_read_data(openocd: OpenOcdTclRpc, address: int, byte_count: int, bin_d
     for i in range(byte_count):
         data8 = openocd.read_memory(SPIFI_CONFIG_DATA32, 8, 1)[0]
         read_data.append(data8)
-        print(f"DATA[{i+address}] = {read_data[i]:#0x}")
+        # print(f"DATA[{i+address}] = {read_data[i]:#0x}")
 
     for i in range(byte_count):
         if read_data[i] != bin_data[address + i]:
@@ -396,6 +396,7 @@ def spifi_page_program(openocd: OpenOcdTclRpc, ByteAddress: int, data: list[int]
                        (byte_count << SPIFI_CONFIG_CMD_DATALEN_S))
     for i in range(ByteAddress, ByteAddress + byte_count, 1):
         # openocd.write_word(SPIFI_CONFIG_DATA32, data[i+ByteAddress])
+        print(data[i])
         openocd.write_memory(SPIFI_CONFIG_DATA32, 8, [data[i]])
     # spifi_intrq_clear(openocd)
     openocd.write_word(SPIFI_CONFIG_STAT, openocd.read_word(
@@ -428,6 +429,7 @@ def spifi_write_file(bytes: list[int]):
     TODO: implement setting byte array offset, add error handling, 
     improve progress visualisation
     """
+    print(bytes)
     print(f"Write {len(bytes)} bytes")
     with OpenOcdTclRpc() as openocd:
         openocd.halt()
