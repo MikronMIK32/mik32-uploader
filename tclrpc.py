@@ -95,7 +95,7 @@ class OpenOcdTclRpc:
         """Halt MCU and raise an error if it returns an error"""
         return self.run("capture \"halt\"")
     
-    def resume(self, address:int|None=None):
+    def resume(self, address=None):
         """Resume the target at its current code position, or the optional address 
         if it is provided. 
         OpenOCD will wait 5 seconds for the target to resume."""
