@@ -90,6 +90,10 @@ class OpenOcdTclRpc:
             raise TclException(code, msg)
         else:
             return msg
+        
+    def reset_halt(self):
+        """Halt MCU and raise an error if it returns an error"""
+        return self.run("capture \"reset halt\"")
     
     def halt(self):
         """Halt MCU and raise an error if it returns an error"""

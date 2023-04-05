@@ -73,7 +73,7 @@ def parse_hex(file: str) -> dict:
         elif rectype == 4:  # Extended Linear Address Record
             print("Extended Linear Address Record")
             print("ERROR: unimplemented record type 4 on line %i" % (i+1))
-            is_error = True
+            # is_error = True
         elif rectype == 5:  # Start Linear Address Record
             print("Start Linear Address is 0x%s (line %i)" %
                     (data_bytes_line, (i+1)))
