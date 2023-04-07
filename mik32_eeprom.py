@@ -152,7 +152,7 @@ def eeprom_write_page(openocd: OpenOcdTclRpc, address:int, data:list[int]):
     openocd.write_word(EEPROM_REGS_EECON, (1 << EEPROM_EX_S) | (1 << EEPROM_BWE_S) | (EEPROM_OP_PR << EEPROM_OP_S))
     time.sleep(0.001)
 
-def eeprom_check_data_apb(openocd: OpenOcdTclRpc, words: list[int]):
+def eeprom_check_data_apb(openocd: OpenOcdTclRpc, words: list[int]) -> int:
     print("EEPROM check through APB...")
     openocd.write_word(EEPROM_REGS_EEA, 0x00000000)
     word_num = 0
@@ -162,6 +162,7 @@ def eeprom_check_data_apb(openocd: OpenOcdTclRpc, words: list[int]):
         value:int = openocd.read_word(EEPROM_REGS_EEDAT)
         if words[word_num] != value:
             print(f"Unexpect value at {word_num} word, expect {word:#0x}, get {value:#0x}")
+            return 1
         word_num += 1
         curr_progress = int((word_num * 50) / len(words))
         if curr_progress > progress:
@@ -169,8 +170,9 @@ def eeprom_check_data_apb(openocd: OpenOcdTclRpc, words: list[int]):
             progress = curr_progress
     print("]")
     print("EEPROM check through APB done!")
+    return 0
 
-def eeprom_check_data_ahb_lite(openocd: OpenOcdTclRpc, words: list[int]):
+def eeprom_check_data_ahb_lite(openocd: OpenOcdTclRpc, words: list[int]) -> int:
     print("EEPROM check through AHB-Lite...")
     mem_array = openocd.read_memory(0x01000000, 32, len(words))
     if len(words) != len(mem_array):
@@ -181,15 +183,17 @@ def eeprom_check_data_ahb_lite(openocd: OpenOcdTclRpc, words: list[int]):
         if words[word_num] != mem_array[word_num]:
             print(f"Unexpect value at {word_num} word, expect {words[word_num]:#0x}, \
             get {mem_array[word_num]:#0x}")
+            return 1
         curr_progress = int((word_num * 50) / len(words))
         if curr_progress > progress:
             print("#"*(curr_progress - progress), end="", flush=True)
             progress = curr_progress
     print("]")
     print("EEPROM check through APB done!")
+    return 0
 
 
-def write_words(words: list[int], write_by_word = False, read_through_apb = False):
+def write_words(words: list[int], write_by_word = False, read_through_apb = False) -> int:
     """
     Write words in MIK32 EEPROM through APB bus
 
@@ -242,8 +246,10 @@ def write_words(words: list[int], write_by_word = False, read_through_apb = Fals
             eeprom_write_page(openocd, page_num*page_size*4, page)
         print("]")
         if read_through_apb:
-            eeprom_check_data_apb(openocd, words)
+            result = eeprom_check_data_apb(openocd, words)
         else:
-            eeprom_check_data_ahb_lite(openocd, words)
+            result = eeprom_check_data_ahb_lite(openocd, words)
         openocd.resume(0)
-    print("EEPROM write file done!")
+    if result == 0:
+        print("EEPROM write file done!")
+    return result

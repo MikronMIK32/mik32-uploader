@@ -32,7 +32,7 @@ def test_connection():
         raise Exception("ERROR: no regs found, check MCU connection")
 
 
-def upload_file(filename: str, boot_source: str = "eeprom"):
+def upload_file(filename: str, boot_source: str = "eeprom") -> int:
     """
     Write ihex or binary file into MIK32 EEPROM or external flash memory
 
@@ -53,17 +53,21 @@ def upload_file(filename: str, boot_source: str = "eeprom"):
         print("ERROR: File %s does not exist" % filename)
         exit(1)
 
-    cmd = shlex.split("%s -s %s -f interface/ftdi/m-link.cfg -f target/mcu32.cfg" % (DEFAULT_OPENOCD_EXEC_FILE_PATH, DEFAULT_OPENOCD_SCRIPTS_PATH), posix=0)
+    cmd = shlex.split("%s -s %s -f interface/ftdi/m-link.cfg -f target/mcu32.cfg" % (DEFAULT_OPENOCD_EXEC_FILE_PATH, DEFAULT_OPENOCD_SCRIPTS_PATH), posix=False)
     with subprocess.Popen(cmd, shell=True, stdout=subprocess.DEVNULL) as proc:
         if boot_source == "eeprom":
-            mik32_eeprom.write_words(bytes2words(get_content(filename)))
+            result = mik32_eeprom.write_words(bytes2words(get_content(filename)))
         elif boot_source == "spifi":
             mik32_spifi.spifi_write_file(get_content(filename))
+            result = 0 # TODO
         elif boot_source == "ram":
             mik32_ram.write_file(filename)
+            result = 0 # TODO
         else:
             raise Exception("Unsupported boot source, use eeprom or spifi")
+            result = 1
         proc.kill()
+    return result
         
 
 
