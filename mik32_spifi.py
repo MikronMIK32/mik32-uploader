@@ -1,6 +1,6 @@
 import time
-from tclrpc import TclException
-from tclrpc import OpenOcdTclRpc
+from .tclrpc import TclException
+from .tclrpc import OpenOcdTclRpc
 
 # --------------------------
 # PM register offset

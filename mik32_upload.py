@@ -1,12 +1,12 @@
 import shlex
-from tclrpc import OpenOcdTclRpc
+from .tclrpc import OpenOcdTclRpc
 import argparse
 import sys
 import subprocess
-import mik32_eeprom
-import mik32_spifi
-import mik32_ram
-from mik32_parsers import *
+from .mik32_eeprom import *
+from .mik32_spifi import *
+from .mik32_ram import *
+from .mik32_parsers import *
 import os
 from typing import Iterable
 
