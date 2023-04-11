@@ -124,3 +124,5 @@ def get_content(filename: str) -> list[int]:
         raise Exception("Unsupported file format")
     
     return content
+
+# parse_hex("mik32-uploader../test-roms/eeprom.hex")

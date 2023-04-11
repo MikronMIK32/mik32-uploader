@@ -6,7 +6,7 @@ import subprocess
 import mik32_eeprom
 import mik32_spifi
 import mik32_ram
-from mik32_parsing import *
+from mik32_parsers import *
 import os
 from typing import Iterable
 
