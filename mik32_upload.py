@@ -53,20 +53,33 @@ def upload_file(filename: str, boot_source: str = "eeprom") -> int:
         print("ERROR: File %s does not exist" % filename)
         exit(1)
 
-    cmd = shlex.split("%s -s %s -f interface/ftdi/m-link.cfg -f target/mcu32.cfg" % (DEFAULT_OPENOCD_EXEC_FILE_PATH, DEFAULT_OPENOCD_SCRIPTS_PATH), posix=False)
-    with subprocess.Popen(cmd, shell=True, stdout=subprocess.DEVNULL) as proc:
-        if boot_source == "eeprom":
-            result = write_words(bytes2words(get_content(filename)))
-        elif boot_source == "spifi":
-            spifi_write_file(get_content(filename))
-            result = 0 # TODO
-        elif boot_source == "ram":
-            write_file(filename)
-            result = 0 # TODO
-        else:
-            raise Exception("Unsupported boot source, use eeprom or spifi")
-            result = 1
-        proc.kill()
+    # cmd = shlex.split("%s -s %s -f interface/ftdi/m-link.cfg -f target/mcu32.cfg" % (DEFAULT_OPENOCD_EXEC_FILE_PATH, DEFAULT_OPENOCD_SCRIPTS_PATH), posix=False)
+    # with subprocess.Popen(cmd, shell=True, stdout=subprocess.DEVNULL) as proc:
+    #     if boot_source == "eeprom":
+    #         result = write_words(bytes2words(get_content(filename)))
+    #     elif boot_source == "spifi":
+    #         spifi_write_file(get_content(filename))
+    #         result = 0 # TODO
+    #     elif boot_source == "ram":
+    #         write_file(filename)
+    #         result = 0 # TODO
+    #     else:
+    #         raise Exception("Unsupported boot source, use eeprom or spifi")
+    #         result = 1
+    #     proc.kill()
+
+    if boot_source == "eeprom":
+        result = write_words(bytes2words(get_content(filename)))
+    elif boot_source == "spifi":
+        spifi_write_file(get_content(filename))
+        result = 0 # TODO
+    elif boot_source == "ram":
+        write_file(filename)
+        result = 0 # TODO
+    else:
+        raise Exception("Unsupported boot source, use eeprom or spifi")
+        result = 1
+
     return result
         
 

@@ -429,7 +429,7 @@ def spifi_write_file(bytes: list[int]):
     TODO: implement setting byte array offset, add error handling, 
     improve progress visualisation
     """
-    print(bytes)
+    # print(bytes)
     print(f"Write {len(bytes)} bytes")
     with OpenOcdTclRpc() as openocd:
         openocd.halt()
