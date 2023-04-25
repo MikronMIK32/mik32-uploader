@@ -1,3 +1,4 @@
+from typing import List
 import time
 from .tclrpc import TclException
 from .tclrpc import OpenOcdTclRpc
@@ -333,9 +334,9 @@ def spifi_chip_erase(openocd: OpenOcdTclRpc):
     spifi_wait_intrq_timeout(openocd, "Timeout executing chip erase command")
 
 
-def spifi_read_data(openocd: OpenOcdTclRpc, address: int, byte_count: int, bin_data: list[int]):
+def spifi_read_data(openocd: OpenOcdTclRpc, address: int, byte_count: int, bin_data: List[int]):
     print("read data")
-    read_data: list[int] = []
+    read_data: List[int] = []
     openocd.write_word(SPIFI_CONFIG_ADDR, address)
 
     """
@@ -375,7 +376,7 @@ def spifi_read_data(openocd: OpenOcdTclRpc, address: int, byte_count: int, bin_d
             print(f"DATA[{i+address}] = {read_data[i]:#0x} - ошибка")
 
 
-def spifi_page_program(openocd: OpenOcdTclRpc, ByteAddress: int, data: list[int], byte_count: int):
+def spifi_page_program(openocd: OpenOcdTclRpc, ByteAddress: int, data: List[int], byte_count: int):
     if byte_count > 256:
         raise Exception("Byte count more than 256")
 
@@ -409,7 +410,7 @@ def spifi_erase(openocd):
     spifi_wait_busy(openocd)
 
 
-def spifi_write(openocd: OpenOcdTclRpc, address: int, data: list[int], data_len: int):
+def spifi_write(openocd: OpenOcdTclRpc, address: int, data: List[int], data_len: int):
     if data_len > 256:
         raise Exception("Byte count more than 256")
 
@@ -420,7 +421,7 @@ def spifi_write(openocd: OpenOcdTclRpc, address: int, data: list[int], data_len:
     print("written")
 
 
-def spifi_write_file(bytes: list[int], is_resume=True):
+def spifi_write_file(bytes: List[int], is_resume=True):
     """
     Write bytes in MIK32 External SPIFI Flash memory
 

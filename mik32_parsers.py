@@ -1,5 +1,6 @@
+from typing import List, Dict
 
-def parse_hex(file: str) -> dict:
+def parse_hex(file: str) -> Dict:
     """
     TODO: Implement support for more record types
     """
@@ -30,7 +31,7 @@ def parse_hex(file: str) -> dict:
         reclen = int(line[1:3], base=16)        # Record length
         load_offset = int(line[3:7], base=16)   # Initial address of data byte
         rectype = int(line[7:9], base=16)       # Record type
-        data_bytes: list[str] = []
+        data_bytes: List[str] = []
 
         data_bytes_line = line[9:reclen*2 + 9]
         for i in range(reclen):
@@ -95,15 +96,15 @@ def parse_hex(file: str) -> dict:
     return memory_blocks
 
 
-def parse_bin(filename: str) -> list[int]:
-    arr: list[int] = []
+def parse_bin(filename: str) -> List[int]:
+    arr: List[int] = []
     with open(filename, "rb") as f:
         while byte := f.read(1):
             arr.append(byte[0])
     return arr
 
 
-def bytes2words(arr: list[int]) -> list[int]:
+def bytes2words(arr: List[int]) -> List[int]:
     word = []
     words = []
     for byte in arr:
@@ -113,8 +114,8 @@ def bytes2words(arr: list[int]) -> list[int]:
             word = []
     return words
 
-def get_content(filename: str) -> list[int]:
-    content: list[int] = []
+def get_content(filename: str) -> List[int]:
+    content: List[int] = []
 
     if filename.endswith(".bin"):
         content = parse_bin(filename)

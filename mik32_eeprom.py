@@ -1,4 +1,4 @@
-
+from typing import List
 import time
 from .tclrpc import TclException
 from .tclrpc import OpenOcdTclRpc
@@ -139,7 +139,7 @@ def eeprom_write_word(openocd: OpenOcdTclRpc, address:int, word:int):
     openocd.write_word(EEPROM_REGS_EECON, (1 << EEPROM_EX_S) | (1 << EEPROM_BWE_S) | (EEPROM_OP_PR << EEPROM_OP_S))
     time.sleep(0.001)
 
-def eeprom_write_page(openocd: OpenOcdTclRpc, address:int, data:list[int]):
+def eeprom_write_page(openocd: OpenOcdTclRpc, address:int, data:List[int]):
     openocd.write_word(EEPROM_REGS_EECON, 1 << EEPROM_BWE_S)
     openocd.write_word(EEPROM_REGS_EEA, address)
     page_address = address & EEPROM_PAGE_MASK
@@ -152,7 +152,7 @@ def eeprom_write_page(openocd: OpenOcdTclRpc, address:int, data:list[int]):
     openocd.write_word(EEPROM_REGS_EECON, (1 << EEPROM_EX_S) | (1 << EEPROM_BWE_S) | (EEPROM_OP_PR << EEPROM_OP_S))
     time.sleep(0.001)
 
-def eeprom_check_data_apb(openocd: OpenOcdTclRpc, words: list[int]) -> int:
+def eeprom_check_data_apb(openocd: OpenOcdTclRpc, words: List[int]) -> int:
     print("EEPROM check through APB...")
     openocd.write_word(EEPROM_REGS_EEA, 0x00000000)
     word_num = 0
@@ -172,7 +172,7 @@ def eeprom_check_data_apb(openocd: OpenOcdTclRpc, words: list[int]) -> int:
     print("EEPROM check through APB done!")
     return 0
 
-def eeprom_check_data_ahb_lite(openocd: OpenOcdTclRpc, words: list[int]) -> int:
+def eeprom_check_data_ahb_lite(openocd: OpenOcdTclRpc, words: List[int]) -> int:
     print("EEPROM check through AHB-Lite...")
     mem_array = openocd.read_memory(0x01000000, 32, len(words))
     if len(words) != len(mem_array):
@@ -193,7 +193,7 @@ def eeprom_check_data_ahb_lite(openocd: OpenOcdTclRpc, words: list[int]) -> int:
     return 0
 
 
-def write_words(words: list[int], write_by_word = False, read_through_apb = False, is_resume=True) -> int:
+def write_words(words: List[int], write_by_word = False, read_through_apb = False, is_resume=True) -> int:
     """
     Write words in MIK32 EEPROM through APB bus
 
