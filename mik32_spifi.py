@@ -420,7 +420,7 @@ def spifi_write(openocd: OpenOcdTclRpc, address: int, data: list[int], data_len:
     print("written")
 
 
-def spifi_write_file(bytes: list[int]):
+def spifi_write_file(bytes: list[int], is_resume=True):
     """
     Write bytes in MIK32 External SPIFI Flash memory
 
@@ -451,4 +451,5 @@ def spifi_write_file(bytes: list[int]):
             spifi_write(openocd, address, bytes, len(bytes) - address)
             spifi_read_data(openocd, address, len(bytes) - address, bytes)
         print("end")
-        openocd.resume(0)
+        if is_resume:
+            openocd.resume(0)

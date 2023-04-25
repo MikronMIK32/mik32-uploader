@@ -32,7 +32,7 @@ def test_connection():
         raise Exception("ERROR: no regs found, check MCU connection")
 
 
-def upload_file(filename: str, boot_source: str = "eeprom") -> int:
+def upload_file(filename: str, boot_source: str = "eeprom", is_resume=True) -> int:
     """
     Write ihex or binary file into MIK32 EEPROM or external flash memory
 
@@ -69,12 +69,12 @@ def upload_file(filename: str, boot_source: str = "eeprom") -> int:
     #     proc.kill()
 
     if boot_source == "eeprom":
-        result = write_words(bytes2words(get_content(filename)))
+        result = write_words(bytes2words(get_content(filename)), is_resume)
     elif boot_source == "spifi":
-        spifi_write_file(get_content(filename))
+        spifi_write_file(get_content(filename), is_resume)
         result = 0 # TODO
     elif boot_source == "ram":
-        write_file(filename)
+        write_file(filename, is_resume)
         result = 0 # TODO
     else:
         raise Exception("Unsupported boot source, use eeprom or spifi")
