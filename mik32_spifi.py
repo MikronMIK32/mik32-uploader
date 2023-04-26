@@ -334,7 +334,7 @@ def spifi_chip_erase(openocd: OpenOcdTclRpc):
     spifi_wait_intrq_timeout(openocd, "Timeout executing chip erase command")
 
 
-def spifi_read_data(openocd: OpenOcdTclRpc, address: int, byte_count: int, bin_data: List[int]):
+def spifi_read_data(openocd: OpenOcdTclRpc, address: int, byte_count: int, bin_data: List[int]) -> int:
     print("read data")
     read_data: List[int] = []
     openocd.write_word(SPIFI_CONFIG_ADDR, address)
@@ -374,6 +374,9 @@ def spifi_read_data(openocd: OpenOcdTclRpc, address: int, byte_count: int, bin_d
     for i in range(byte_count):
         if read_data[i] != bin_data[address + i]:
             print(f"DATA[{i+address}] = {read_data[i]:#0x} - ошибка")
+            return 1
+    
+    return 0
 
 
 def spifi_page_program(openocd: OpenOcdTclRpc, ByteAddress: int, data: List[int], byte_count: int):
@@ -444,13 +447,16 @@ def spifi_write_file(bytes: List[int], is_resume=True):
                 break
             print("address = ", address)
             spifi_write(openocd, address, bytes, 256)
-            spifi_read_data(openocd, address, 256, bytes)
+            if spifi_read_data(openocd, address, 256, bytes) == 1:
+                return 1
 
         if (len(bytes) % 256) != 0:
             print(
                 f"address = {address}, +{len(bytes) - address-1}[{address + len(bytes) - address-1}]")
             spifi_write(openocd, address, bytes, len(bytes) - address)
-            spifi_read_data(openocd, address, len(bytes) - address, bytes)
+            if spifi_read_data(openocd, address, len(bytes) - address, bytes) == 1:
+                return 1
         print("end")
         if is_resume:
             openocd.resume(0)
+    return 0

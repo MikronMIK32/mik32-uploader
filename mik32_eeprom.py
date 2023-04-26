@@ -203,6 +203,8 @@ def write_words(words: List[int], write_by_word = False, read_through_apb = Fals
 
     TODO: implement setting byte array offset, add error handling, 
     improve progress visualization, add option check page immidiately after writing
+
+    @return: return 0 if successful, 1 if failed
     """
     print(f"Write {len(words*4)} bytes")
     with OpenOcdTclRpc() as openocd:

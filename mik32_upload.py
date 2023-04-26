@@ -39,6 +39,8 @@ def upload_file(filename: str, boot_source: str = "eeprom", is_resume=True) -> i
     @filename: full path to the file with hex or bin file format
     @boot_source: boot source, eeprom, ram or spifi, define memory block mapped to boot memory area (0x0 offset)
 
+    @return: return 0 if successful, 1 if failed
+
     TODO: Implement error handling
     """
 
@@ -71,8 +73,7 @@ def upload_file(filename: str, boot_source: str = "eeprom", is_resume=True) -> i
     if boot_source == "eeprom":
         result = write_words(bytes2words(get_content(filename)), is_resume)
     elif boot_source == "spifi":
-        spifi_write_file(get_content(filename), is_resume)
-        result = 0 # TODO
+        result = spifi_write_file(get_content(filename), is_resume)
     elif boot_source == "ram":
         write_file(filename, is_resume)
         result = 0 # TODO
