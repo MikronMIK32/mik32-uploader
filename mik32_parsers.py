@@ -113,17 +113,3 @@ def bytes2words(arr: List[int]) -> List[int]:
             words.append(word[0]+2**8*word[1]+2**16*word[2]+2**24*word[3])
             word = []
     return words
-
-def get_content(filename: str) -> List[int]:
-    content: List[int] = []
-
-    if filename.endswith(".bin"):
-        content = parse_bin(filename)
-    elif filename.endswith(".hex"):
-        content = parse_hex(filename)[0]
-    else:
-        raise Exception("Unsupported file format")
-    
-    return content
-
-# parse_hex("mik32-uploader../test-roms/eeprom.hex")
