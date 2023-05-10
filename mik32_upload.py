@@ -5,12 +5,11 @@ import subprocess
 import os
 from enum import Enum
 from typing import List, Tuple
-from .drivers.tclrpc import OpenOcdTclRpc
-from .drivers.mik32_eeprom import *
-from .drivers.mik32_spifi import *
-from .drivers.mik32_ram import *
-from .mik32_parsers import *
-from .parsers.parser_hex import *
+from drivers.tclrpc import OpenOcdTclRpc
+from drivers.mik32_eeprom import *
+from drivers.mik32_spifi import *
+from drivers.mik32_ram import *
+from mik32_parsers import *
 
 
 # class bcolors(Enum):
@@ -38,8 +37,8 @@ def test_connection():
         raise Exception("ERROR: no regs found, check MCU connection")
 
 
-def read_file(filename: str) -> List[Tuple[int, List[int]]] :
-    segments: List[Tuple[int, List[int]]] = []
+def read_file(filename: str) -> List[Record]:
+    segments: List[Record] = []
     lines: List[str] = []
 
     file_name, file_extension = os.path.splitext(filename)
@@ -54,28 +53,14 @@ def read_file(filename: str) -> List[Tuple[int, List[int]]] :
         raise Exception("Unsupported file format: %s" % (file_extension))
 
     for line in lines:
-        record: Tuple[RecordType, List[int]]
-        if file_extension == ".hex":
-            record = 
+        record: Record = parse_line(line, file_extension)
+        print(record)
 
-    
+
     return segments
 
 
-def get_content(filename: str) -> List[int]:
-    content: List[int] = []
-
-    if filename.endswith(".bin"):
-        content = parse_bin(filename)
-    elif filename.endswith(".hex"):
-        content = parse_hex(filename)[0]
-    else:
-        
-    
-    return content
-
-
-def upload_file(filename: str, boot_source: str = "undefined", is_resume=True) -> int:
+def upload_file(filename: str, is_resume=True) -> int:
     """
     Write ihex or binary file into MIK32 EEPROM or external flash memory
 
@@ -87,16 +72,16 @@ def upload_file(filename: str, boot_source: str = "undefined", is_resume=True) -
     TODO: Implement error handling
     """
 
-    print("Boot mode %s" % boot_source)
+    # print("Running OpenOCD...")
 
-    print("Running OpenOCD...")
-
-    print(DEFAULT_OPENOCD_EXEC_FILE_PATH)
-    print(DEFAULT_OPENOCD_SCRIPTS_PATH)
+    # print(DEFAULT_OPENOCD_EXEC_FILE_PATH)
+    # print(DEFAULT_OPENOCD_SCRIPTS_PATH)
 
     if not os.path.exists(filename):
         print("ERROR: File %s does not exist" % filename)
         exit(1)
+    
+    print(read_file(filename))
 
     # cmd = shlex.split("%s -s %s -f interface/ftdi/m-link.cfg -f target/mcu32.cfg" % (DEFAULT_OPENOCD_EXEC_FILE_PATH, DEFAULT_OPENOCD_SCRIPTS_PATH), posix=False)
     # with subprocess.Popen(cmd, shell=True, stdout=subprocess.DEVNULL) as proc:
@@ -113,40 +98,24 @@ def upload_file(filename: str, boot_source: str = "undefined", is_resume=True) -
     #         result = 1
     #     proc.kill()
 
-    if boot_source == "eeprom":
-        result = write_words(bytes2words(get_content(filename)), is_resume)
-    elif boot_source == "spifi":
-        result = spifi_write_file(get_content(filename), is_resume)
-    elif boot_source == "ram":
-        write_file(filename, is_resume)
-        result = 0  # TODO
-    else:
-        raise Exception("Unsupported boot source, use eeprom or spifi")
-        result = 1
+    # if boot_source == "eeprom":
+    #     result = write_words(bytes2words(get_content(filename)), is_resume)
+    # elif boot_source == "spifi":
+    #     result = spifi_write_file(get_content(filename), is_resume)
+    # elif boot_source == "ram":
+    #     write_file(filename, is_resume)
+    #     result = 0  # TODO
+    # else:
+    #     raise Exception("Unsupported boot source, use eeprom or spifi")
+    #     result = 1
 
-    return result
-
-
-def show_file(filename: str, boot_source: str = "eeprom"):
-    if filename.endswith(".bin"):
-        content = parse_bin(filename)
-    elif filename.endswith(".hex"):
-        content = parse_hex(filename)
-    else:
-        raise Exception("Unsupported file format")
-
-    if type(content) is list:
-        print(content)
-    elif type(content) is dict:
-        print(content[0])
+    return 1
 
 
 def createParser():
     parser = argparse.ArgumentParser()
     parser.add_argument('filepath', nargs='?')
-    parser.add_argument('--show-file', action="store_const", const=True)
-    parser.add_argument('--no-upload', action="store_const", const=True)
-    parser.add_argument('-b', '--boot-mode', default='undefined')
+    # parser.add_argument('-b', '--boot-mode', default='undefined')
 
     return parser
 
@@ -155,10 +124,7 @@ if __name__ == '__main__':
     parser = createParser()
     namespace = parser.parse_args()
 
-    if namespace.show_file:
-        show_file(namespace.filepath)
     if namespace.filepath:
-        if namespace.no_upload == None:
-            upload_file(namespace.filepath, namespace.boot_mode)
+        upload_file(namespace.filepath)
     else:
         print("Nothing to upload")

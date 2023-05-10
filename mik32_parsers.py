@@ -1,4 +1,80 @@
 from typing import List, Dict
+from dataclasses import dataclass
+
+from enum import Enum
+from typing import List, Tuple
+
+
+class RecordType(Enum):
+    UNKNOWN = -1
+    DATA = 0
+    EOF = 1
+    SEGADDR = 2
+    STARTADDR = 3
+    EXTADDR = 4
+    LINEARSTARTADDR = 5
+
+
+@dataclass
+class Record:
+    type: RecordType
+    address: int
+    data: List[int]
+
+
+def parse_line(line: str, file_extension: str) -> Record:
+    if file_extension != ".hex":
+        raise Exception("Unsupported file format: %s" % (file_extension))
+
+    return parse_hex_line(line)
+
+
+def parse_hex_line(line: str) -> Record:
+    if line[0] != ':':
+        print("Error: unexpected record mark on line %s, expect \':\', get \'%c\'" % (
+            line, line[0]))
+        return ()
+
+    reclen = int(line[1:3], base=16)        # Record length
+    addr = int(line[3:7], base=16)          # Initial address of data byte
+    rectype = int(line[7:9], base=16)       # Record type
+    data_bytes: List[str] = []
+
+    data_bytes_line = line[9:reclen*2 + 9]
+    for i in range(reclen):
+        data_bytes.append(data_bytes_line[i*2:i*2+2])
+
+    record = Record(RecordType.UNKNOWN, 0, [])
+
+    if rectype == 0:  # Data Record
+        record.type = RecordType.DATA
+        record.address = addr
+        record.data = list(map(lambda x: int(x, base=16), data_bytes))
+    elif rectype == 1:  # End of File Record
+        record.type = RecordType.EOF
+    elif rectype == 2:  # Extended Segment Address Record
+        record.type = RecordType.SEGADDR
+        record.address = addr
+        record.data = list(map(lambda x: int(x, base=16), data_bytes))
+    elif rectype == 3:  # Start Segment Address Record
+        print("Start Segment Address Record")
+        print("ERROR: unimplemented record type 3 on line %i" % (i+1))
+        is_error = True
+    elif rectype == 4:  # Extended Linear Address Record
+        record.type = RecordType.EXTADDR
+        record.address = addr
+        record.data = list(map(lambda x: int(x, base=16), data_bytes))
+    elif rectype == 5:  # Start Linear Address Record
+        record.type = RecordType.LINEARSTARTADDR
+        record.address = addr
+        record.data = list(map(lambda x: int(x, base=16), data_bytes))
+        print("Start Linear Address is 0x%s (line %s)" %
+              (data_bytes_line, line))
+    else:
+        record_type = RecordType.UNKNOWN
+
+    return record
+
 
 def parse_hex(file: str) -> Dict:
     """
@@ -77,11 +153,11 @@ def parse_hex(file: str) -> Dict:
             # is_error = True
         elif rectype == 5:  # Start Linear Address Record
             print("Start Linear Address is 0x%s (line %i)" %
-                    (data_bytes_line, (i+1)))
+                  (data_bytes_line, (i+1)))
             print("MIK32 MCU does not support arbitrary start address")
         else:
             print("ERROR: unexpected record type %i on line %i" %
-                    (rectype, i+1))
+                  (rectype, i+1))
             is_error = True
             break
         # print("line %i data_bytes=%i line_addr=%i" % (i+1, data_bytes, line_addr))
@@ -94,14 +170,6 @@ def parse_hex(file: str) -> Dict:
         exit()
 
     return memory_blocks
-
-
-def parse_bin(filename: str) -> List[int]:
-    arr: List[int] = []
-    with open(filename, "rb") as f:
-        while byte := f.read(1):
-            arr.append(byte[0])
-    return arr
 
 
 def bytes2words(arr: List[int]) -> List[int]:
