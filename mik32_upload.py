@@ -37,8 +37,13 @@ def test_connection():
         raise Exception("ERROR: no regs found, check MCU connection")
 
 
-def read_file(filename: str) -> List[Record]:
-    segments: List[Record] = []
+@dataclass
+class Segment:
+    offset: int
+    data: List[int]
+
+def read_file(filename: str) -> List[Segment]:
+    segments: List[Segment] = []
     lines: List[str] = []
 
     file_name, file_extension = os.path.splitext(filename)
@@ -52,13 +57,25 @@ def read_file(filename: str) -> List[Record]:
     else:
         raise Exception("Unsupported file format: %s" % (file_extension))
 
+    lba: int = 0        # Linear Base Address
+    expect_address = 0  # Address of the next byte
+
     for line in lines:
         record: Record = parse_line(line, file_extension)
-        print(record)
         if record.type == RecordType.DATA:
-            pass
+            drlo: int = record.address # Data Record Load Offset
+            if segments.__len__() == 0:
+                expect_address = lba+drlo
+                segments.append(Segment(offset=expect_address, data=[]))
+            if expect_address != lba+drlo:
+                expect_address = lba+drlo
+                segments.append(Segment(offset=expect_address, data=[]))
+            
+            for byte in record.data:
+                segments[-1].data.append(byte)
+                expect_address += 1
         elif record.type == RecordType.EXTADDR:
-            pass
+            lba = record.address
         elif record.type == RecordType.LINEARSTARTADDR:
             print("Start Linear Address:", record.address)
 

@@ -40,11 +40,15 @@ def parse_hex_line(line: str) -> Record:
     rectype = int(line[7:9], base=16)               # Record type field
     data_bytes_line = line[9:datalen*2 + 9]         # Data field
     crc = int(line[datalen*2 + 9:datalen*2 + 11], base=16)
+
     splitted_by_bytes: List[str] = []
     for i in range(datalen):
         splitted_by_bytes.append(data_bytes_line[i*2:i*2+2])
     
     data_bytes = list(map(lambda x: int(x, base=16), splitted_by_bytes))
+    checksum = (datalen + int(line[3:5], base=16) + int(line[5:7], base=16) + rectype + sum(data_bytes)) % 256
+    if (checksum + crc) % 256 != 0:
+        raise Exception("Checksum mismatch in %s" % line)
 
     record = Record(RecordType.UNKNOWN, 0, [])
 
@@ -175,11 +179,11 @@ def parse_hex(file: str) -> Dict:
 
 
 def bytes2words(arr: List[int]) -> List[int]:
-    word = []
+    bytes = []
     words = []
     for byte in arr:
-        word.append(byte)
-        if word.__len__() == 4:
-            words.append(word[0]+2**8*word[1]+2**16*word[2]+2**24*word[3])
-            word = []
+        bytes.append(byte)
+        if bytes.__len__() == 4:
+            words.append(bytes[0]+2**8*bytes[1]+2**16*bytes[2]+2**24*bytes[3])
+            bytes = []
     return words
