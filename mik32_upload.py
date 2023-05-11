@@ -4,7 +4,7 @@ import sys
 import subprocess
 import os
 from enum import Enum
-from typing import List, Tuple
+from typing import List, NamedTuple
 from drivers.tclrpc import OpenOcdTclRpc
 from drivers.mik32_eeprom import *
 from drivers.mik32_spifi import *
@@ -42,6 +42,24 @@ class Segment:
     offset: int
     data: List[int]
 
+class MemoryType(Enum):
+    EEPROM = 1
+    RAM = 2
+    SPIFI = 80
+
+class MemorySection(NamedTuple):
+    type: MemoryType
+    offset: int
+    length: int # Memory section length in bytes
+
+
+mik32v0_sections: List[MemorySection] = [
+    MemorySection(MemoryType.EEPROM, 0x01000000, 8 * 1024),
+    MemorySection(MemoryType.RAM, 0x02000000, 8 * 1024),
+    MemorySection(MemoryType.SPIFI, 0x80000000, 8 * 1024 * 1024),
+]
+
+
 def read_file(filename: str) -> List[Segment]:
     segments: List[Segment] = []
     lines: List[str] = []
@@ -63,14 +81,14 @@ def read_file(filename: str) -> List[Segment]:
     for line in lines:
         record: Record = parse_line(line, file_extension)
         if record.type == RecordType.DATA:
-            drlo: int = record.address # Data Record Load Offset
+            drlo: int = record.address  # Data Record Load Offset
             if segments.__len__() == 0:
                 expect_address = lba+drlo
                 segments.append(Segment(offset=expect_address, data=[]))
             if expect_address != lba+drlo:
                 expect_address = lba+drlo
                 segments.append(Segment(offset=expect_address, data=[]))
-            
+
             for byte in record.data:
                 segments[-1].data.append(byte)
                 expect_address += 1
@@ -78,7 +96,6 @@ def read_file(filename: str) -> List[Segment]:
             lba = record.address
         elif record.type == RecordType.LINEARSTARTADDR:
             print("Start Linear Address:", record.address)
-
 
     return segments
 
@@ -103,7 +120,7 @@ def upload_file(filename: str, is_resume=True) -> int:
     if not os.path.exists(filename):
         print("ERROR: File %s does not exist" % filename)
         exit(1)
-    
+
     print(read_file(filename))
 
     # cmd = shlex.split("%s -s %s -f interface/ftdi/m-link.cfg -f target/mcu32.cfg" % (DEFAULT_OPENOCD_EXEC_FILE_PATH, DEFAULT_OPENOCD_SCRIPTS_PATH), posix=False)

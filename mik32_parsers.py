@@ -2,7 +2,7 @@ from typing import List, Dict
 from dataclasses import dataclass
 
 from enum import Enum
-from typing import List, Tuple
+from typing import List
 
 
 class RecordType(Enum):
