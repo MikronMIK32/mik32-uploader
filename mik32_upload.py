@@ -55,6 +55,12 @@ def read_file(filename: str) -> List[Record]:
     for line in lines:
         record: Record = parse_line(line, file_extension)
         print(record)
+        if record.type == RecordType.DATA:
+            pass
+        elif record.type == RecordType.EXTADDR:
+            pass
+        elif record.type == RecordType.LINEARSTARTADDR:
+            print("Start Linear Address:", record.address)
 
 
     return segments

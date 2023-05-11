@@ -35,41 +35,43 @@ def parse_hex_line(line: str) -> Record:
             line, line[0]))
         return ()
 
-    reclen = int(line[1:3], base=16)        # Record length
-    addr = int(line[3:7], base=16)          # Initial address of data byte
-    rectype = int(line[7:9], base=16)       # Record type
-    data_bytes: List[str] = []
-
-    data_bytes_line = line[9:reclen*2 + 9]
-    for i in range(reclen):
-        data_bytes.append(data_bytes_line[i*2:i*2+2])
+    datalen = int(line[1:3], base=16)               # Data field length
+    addr = int(line[3:7], base=16)                  # Load offset field
+    rectype = int(line[7:9], base=16)               # Record type field
+    data_bytes_line = line[9:datalen*2 + 9]         # Data field
+    crc = int(line[datalen*2 + 9:datalen*2 + 11], base=16)
+    splitted_by_bytes: List[str] = []
+    for i in range(datalen):
+        splitted_by_bytes.append(data_bytes_line[i*2:i*2+2])
+    
+    data_bytes = list(map(lambda x: int(x, base=16), splitted_by_bytes))
 
     record = Record(RecordType.UNKNOWN, 0, [])
 
     if rectype == 0:  # Data Record
         record.type = RecordType.DATA
         record.address = addr
-        record.data = list(map(lambda x: int(x, base=16), data_bytes))
+        record.data = data_bytes
     elif rectype == 1:  # End of File Record
         record.type = RecordType.EOF
     elif rectype == 2:  # Extended Segment Address Record
         record.type = RecordType.SEGADDR
-        record.address = addr
-        record.data = list(map(lambda x: int(x, base=16), data_bytes))
+        # record.address = addr
+        # record.data = list(map(lambda x: int(x, base=16), splitted_by_bytes))
     elif rectype == 3:  # Start Segment Address Record
-        print("Start Segment Address Record")
-        print("ERROR: unimplemented record type 3 on line %i" % (i+1))
-        is_error = True
+        record.type = RecordType.STARTADDR
+        # record.address = addr
+        # record.data = list(map(lambda x: int(x, base=16), splitted_by_bytes))
     elif rectype == 4:  # Extended Linear Address Record
         record.type = RecordType.EXTADDR
-        record.address = addr
-        record.data = list(map(lambda x: int(x, base=16), data_bytes))
+        record.address = data_bytes[1] * pow(256, 2) + data_bytes[0] * pow(256, 3)
     elif rectype == 5:  # Start Linear Address Record
         record.type = RecordType.LINEARSTARTADDR
-        record.address = addr
-        record.data = list(map(lambda x: int(x, base=16), data_bytes))
-        print("Start Linear Address is 0x%s (line %s)" %
-              (data_bytes_line, line))
+        address = 0
+        data_bytes.reverse()
+        for i in range(4):
+            address += data_bytes[i] * pow(256, i)
+        record.address = address
     else:
         record_type = RecordType.UNKNOWN
 
