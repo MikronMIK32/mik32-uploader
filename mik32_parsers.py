@@ -31,9 +31,8 @@ def parse_line(line: str, file_extension: str) -> Record:
 
 def parse_hex_line(line: str) -> Record:
     if line[0] != ':':
-        print("Error: unexpected record mark on line %s, expect \':\', get \'%c\'" % (
+        raise Exception("Error: unexpected record mark on line %s, expect \':\', get \'%c\'" % (
             line, line[0]))
-        return ()
 
     datalen = int(line[1:3], base=16)               # Data field length
     addr = int(line[3:7], base=16)                  # Load offset field
@@ -186,4 +185,6 @@ def bytes2words(arr: List[int]) -> List[int]:
         if bytes.__len__() == 4:
             words.append(bytes[0]+2**8*bytes[1]+2**16*bytes[2]+2**24*bytes[3])
             bytes = []
+    if bytes.__len__() != 0:
+        print("WARNING: skipping not-word-aligned byte")
     return words

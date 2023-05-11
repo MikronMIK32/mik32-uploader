@@ -42,15 +42,17 @@ class Segment:
     offset: int
     data: List[int]
 
+
 class MemoryType(Enum):
     EEPROM = 1
     RAM = 2
     SPIFI = 80
 
+
 class MemorySection(NamedTuple):
     type: MemoryType
     offset: int
-    length: int # Memory section length in bytes
+    length: int  # Memory section length in bytes
 
 
 mik32v0_sections: List[MemorySection] = [
@@ -58,6 +60,15 @@ mik32v0_sections: List[MemorySection] = [
     MemorySection(MemoryType.RAM, 0x02000000, 8 * 1024),
     MemorySection(MemoryType.SPIFI, 0x80000000, 8 * 1024 * 1024),
 ]
+
+
+def belongs_memory_section(memory_section: MemorySection, offset: int) -> bool:
+    if offset < memory_section.offset:
+        return False
+    if offset >= (memory_section.offset + memory_section.length):
+        return False
+
+    return True
 
 
 def read_file(filename: str) -> List[Segment]:
@@ -71,7 +82,7 @@ def read_file(filename: str) -> List[Segment]:
     elif file_extension == ".bin":
         with open(filename, "rb") as f:
             contents = list(f.read())
-            segments[0] = (0, contents)
+            segments.append(Segment(offset=0, data=contents))
     else:
         raise Exception("Unsupported file format: %s" % (file_extension))
 
@@ -96,6 +107,8 @@ def read_file(filename: str) -> List[Segment]:
             lba = record.address
         elif record.type == RecordType.LINEARSTARTADDR:
             print("Start Linear Address:", record.address)
+        elif record.type == RecordType.EOF:
+            break
 
     return segments
 
@@ -105,11 +118,8 @@ def upload_file(filename: str, is_resume=True) -> int:
     Write ihex or binary file into MIK32 EEPROM or external flash memory
 
     @filename: full path to the file with hex or bin file format
-    @boot_source: boot source, eeprom, ram or spifi, define memory block mapped to boot memory area (0x0 offset)
 
     @return: return 0 if successful, 1 if failed
-
-    TODO: Implement error handling
     """
 
     # print("Running OpenOCD...")
@@ -121,7 +131,24 @@ def upload_file(filename: str, is_resume=True) -> int:
         print("ERROR: File %s does not exist" % filename)
         exit(1)
 
-    print(read_file(filename))
+    segments: List[Segment] = read_file(filename)
+    # print(segments)
+
+    for segment in segments:
+        segment_section: None | MemorySection = None
+        for section in mik32v0_sections:
+            if belongs_memory_section(section, segment.offset):
+                segment_section = section
+
+        if segment_section is None:
+            raise Exception(
+                "ERROR: segment with offset %s doesn't belong to any section" % hex(segment.offset))
+        if (segment.offset + segment.data.__len__()) > (segment_section.offset + segment_section.length):
+            raise Exception("ERROR: segment with offset %s and length %s overflows section %s" % (
+                hex(segment.offset), segment.data.__len__(), segment_section.type.name))
+        
+        if segment_section.type == MemoryType.EEPROM:
+            result = write_words(bytes2words(segment.data), is_resume)
 
     # cmd = shlex.split("%s -s %s -f interface/ftdi/m-link.cfg -f target/mcu32.cfg" % (DEFAULT_OPENOCD_EXEC_FILE_PATH, DEFAULT_OPENOCD_SCRIPTS_PATH), posix=False)
     # with subprocess.Popen(cmd, shell=True, stdout=subprocess.DEVNULL) as proc:
