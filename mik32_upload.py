@@ -127,6 +127,8 @@ def upload_file(filename: str, is_resume=True) -> int:
     # print(DEFAULT_OPENOCD_EXEC_FILE_PATH)
     # print(DEFAULT_OPENOCD_SCRIPTS_PATH)
 
+    result = 1
+
     if not os.path.exists(filename):
         print("ERROR: File %s does not exist" % filename)
         exit(1)
@@ -149,6 +151,11 @@ def upload_file(filename: str, is_resume=True) -> int:
         
         if segment_section.type == MemoryType.EEPROM:
             result = write_words(bytes2words(segment.data), is_resume)
+        elif segment_section.type == MemoryType.SPIFI:
+            result = spifi_write_file(segment.data, is_resume)
+        # elif segment_section.type == MemoryType.RAM:
+        #     write_file(filename, is_resume)
+        #     result = write_words(bytes2words(segment.data), is_resume)
 
     # cmd = shlex.split("%s -s %s -f interface/ftdi/m-link.cfg -f target/mcu32.cfg" % (DEFAULT_OPENOCD_EXEC_FILE_PATH, DEFAULT_OPENOCD_SCRIPTS_PATH), posix=False)
     # with subprocess.Popen(cmd, shell=True, stdout=subprocess.DEVNULL) as proc:
@@ -176,7 +183,7 @@ def upload_file(filename: str, is_resume=True) -> int:
     #     raise Exception("Unsupported boot source, use eeprom or spifi")
     #     result = 1
 
-    return 1
+    return result
 
 
 def createParser():
