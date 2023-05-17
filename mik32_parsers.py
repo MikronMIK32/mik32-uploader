@@ -22,17 +22,17 @@ class Record:
     data: List[int]
 
 
-def parse_line(line: str, file_extension: str) -> Record:
+def parse_line(line: str, line_n: int, file_extension: str) -> Record:
     if file_extension != ".hex":
         raise Exception("Unsupported file format: %s" % (file_extension))
 
-    return parse_hex_line(line)
+    return parse_hex_line(line, line_n)
 
 
-def parse_hex_line(line: str) -> Record:
+def parse_hex_line(line: str, line_n: int) -> Record:
     if line[0] != ':':
-        raise Exception("Error: unexpected record mark on line %s, expect \':\', get \'%c\'" % (
-            line, line[0]))
+        raise Exception("Error: unexpected record mark in line %d: %s, expect \':\', get \'%c\'" % (
+            line_n, line, line[0]))
 
     datalen = int(line[1:3], base=16)               # Data field length
     addr = int(line[3:7], base=16)                  # Load offset field
@@ -47,7 +47,7 @@ def parse_hex_line(line: str) -> Record:
     data_bytes = list(map(lambda x: int(x, base=16), splitted_by_bytes))
     checksum = (datalen + int(line[3:5], base=16) + int(line[5:7], base=16) + rectype + sum(data_bytes)) % 256
     if (checksum + crc) % 256 != 0:
-        raise Exception("Checksum mismatch in %s" % line)
+        raise Exception("Checksum mismatch in line %d %s" % (line_n, line))
 
     record = Record(RecordType.UNKNOWN, 0, [])
 

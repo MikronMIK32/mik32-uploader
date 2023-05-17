@@ -1,7 +1,7 @@
 from typing import List
 import time
-from tclrpc import TclException
 from tclrpc import OpenOcdTclRpc
+from mik32_upload import Segment, MemorySection
 
 # --------------------------
 # PM register offset
@@ -257,3 +257,4 @@ def write_words(words: List[int], openocd: OpenOcdTclRpc, write_by_word = False,
     if result == 0:
         print("EEPROM write file done!")
     return result
+

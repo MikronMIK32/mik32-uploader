@@ -3,7 +3,7 @@ import argparse
 import subprocess
 import os
 from enum import Enum
-from typing import List, NamedTuple
+from typing import List, Dict, NamedTuple
 from tclrpc import OpenOcdTclRpc
 import mik32_eeprom
 import mik32_spifi
@@ -36,16 +36,12 @@ def test_connection():
         raise Exception("ERROR: no regs found, check MCU connection")
 
 
-@dataclass
-class Segment:
-    offset: int
-    data: List[int]
-
-
 class MemoryType(Enum):
+    BOOT = 0
     EEPROM = 1
     RAM = 2
     SPIFI = 80
+    UNKNOWN = -1
 
 
 class MemorySection(NamedTuple):
@@ -55,10 +51,18 @@ class MemorySection(NamedTuple):
 
 
 mik32v0_sections: List[MemorySection] = [
+    MemorySection(MemoryType.BOOT, 0x0, 16 * 1024),
     MemorySection(MemoryType.EEPROM, 0x01000000, 8 * 1024),
-    MemorySection(MemoryType.RAM, 0x02000000, 8 * 1024),
+    MemorySection(MemoryType.RAM, 0x02000000, 16 * 1024),
     MemorySection(MemoryType.SPIFI, 0x80000000, 8 * 1024 * 1024),
 ]
+
+
+@dataclass
+class Segment:
+    offset: int
+    memory: MemorySection | None
+    data: List[int]
 
 
 def belongs_memory_section(memory_section: MemorySection, offset: int) -> bool:
@@ -68,6 +72,14 @@ def belongs_memory_section(memory_section: MemorySection, offset: int) -> bool:
         return False
 
     return True
+
+
+def find_memory_section(offset: int) -> MemorySection | None:
+    for section in mik32v0_sections:
+        if belongs_memory_section(section, offset):
+            return section
+
+    return None
 
 
 def read_file(filename: str) -> List[Segment]:
@@ -81,23 +93,22 @@ def read_file(filename: str) -> List[Segment]:
     elif file_extension == ".bin":
         with open(filename, "rb") as f:
             contents = list(f.read())
-            segments.append(Segment(offset=0, data=contents))
+            segments.append(
+                Segment(offset=0, memory=find_memory_section(0), data=contents))
     else:
         raise Exception("Unsupported file format: %s" % (file_extension))
 
     lba: int = 0        # Linear Base Address
     expect_address = 0  # Address of the next byte
 
-    for line in lines:
-        record: Record = parse_line(line, file_extension)
+    for i, line in enumerate(lines):
+        record: Record = parse_line(line, i, file_extension)
         if record.type == RecordType.DATA:
             drlo: int = record.address  # Data Record Load Offset
-            if segments.__len__() == 0:
+            if (expect_address != lba+drlo) or (segments.__len__() == 0):
                 expect_address = lba+drlo
-                segments.append(Segment(offset=expect_address, data=[]))
-            if expect_address != lba+drlo:
-                expect_address = lba+drlo
-                segments.append(Segment(offset=expect_address, data=[]))
+                segments.append(Segment(
+                    offset=expect_address, memory=find_memory_section(expect_address), data=[]))
 
             for byte in record.data:
                 segments[-1].data.append(byte)
@@ -110,6 +121,23 @@ def read_file(filename: str) -> List[Segment]:
             break
 
     return segments
+
+
+def segments_to_pages(segments: List[Segment], page_size: int) -> List[Page]:
+    pages: Dict[int, List[int]] = {}
+
+    for segment in segments:
+        if segment.memory is None:
+            continue
+    
+        internal_offset = segment.offset - segment.memory.offset
+
+        for i, byte in enumerate(segment.data):
+            byte_offset = internal_offset + i
+
+            pages[byte_offset % 256]
+    
+    return pages
 
 
 def upload_file(filename: str, host: str = '127.0.0.1', port: int = OpenOcdTclRpc.DEFAULT_PORT, is_resume=True, run_openocd=False) -> int:
@@ -136,34 +164,33 @@ def upload_file(filename: str, host: str = '127.0.0.1', port: int = OpenOcdTclRp
     # print(segments)
 
     for segment in segments:
-        segment_section: None | MemorySection = None
-        for section in mik32v0_sections:
-            if belongs_memory_section(section, segment.offset):
-                segment_section = section
-
-        if segment_section is None:
+        if segment.memory is None:
             raise Exception(
                 "ERROR: segment with offset %s doesn't belong to any section" % hex(segment.offset))
-        if (segment.offset + segment.data.__len__()) > (segment_section.offset + segment_section.length):
+
+        if (segment.offset + segment.data.__len__()) > (segment.memory.offset + segment.memory.length):
             raise Exception("ERROR: segment with offset %s and length %s overflows section %s" % (
-                hex(segment.offset), segment.data.__len__(), segment_section.type.name))
+                hex(segment.offset), segment.data.__len__(), segment.memory.type.name))
 
-        proc: subprocess.Popen | None = None
-        if run_openocd:
-            cmd = shlex.split("%s -s %s -f interface/ftdi/m-link.cfg -f target/mcu32.cfg" % (
-                DEFAULT_OPENOCD_EXEC_FILE_PATH, DEFAULT_OPENOCD_SCRIPTS_PATH), posix=False)
-            proc = subprocess.Popen(
-                cmd, creationflags=subprocess.CREATE_NEW_CONSOLE | subprocess.SW_HIDE)
+    print(segments_to_pages(list(filter(
+        lambda segment: (segment.memory is not None) and (segment.memory.type == MemoryType.EEPROM), segments)), 128))
 
-        with OpenOcdTclRpc() as openocd:
-            if segment_section.type == MemoryType.EEPROM:
-                result = mik32_eeprom.write_words(bytes2words(
-                    segment.data), openocd, is_resume)
-            elif segment_section.type == MemoryType.SPIFI:
-                result = mik32_spifi.spifi_write_file(segment.data, openocd, is_resume)
+    # proc: subprocess.Popen | None = None
+    # if run_openocd:
+    #     cmd = shlex.split("%s -s %s -f interface/ftdi/m-link.cfg -f target/mcu32.cfg" % (
+    #         DEFAULT_OPENOCD_EXEC_FILE_PATH, DEFAULT_OPENOCD_SCRIPTS_PATH), posix=False)
+    #     proc = subprocess.Popen(
+    #         cmd, creationflags=subprocess.CREATE_NEW_CONSOLE | subprocess.SW_HIDE)
 
-        if run_openocd and proc is not None:
-            proc.kill()
+    # with OpenOcdTclRpc() as openocd:
+    #     if segment_section.type == MemoryType.EEPROM:
+    #         result = mik32_eeprom.write_words(bytes2words(
+    #             segment.data), openocd, is_resume)
+    #     elif segment_section.type == MemoryType.SPIFI:
+    #         result = mik32_spifi.spifi_write_file(segment.data, openocd, is_resume)
+
+    # if run_openocd and proc is not None:
+    #     proc.kill()
 
     return result
 
@@ -173,8 +200,10 @@ def createParser():
     parser.add_argument('filepath', nargs='?')
     parser.add_argument('--run-openocd', dest='run_openocd',
                         action='store_true', default=False)
-    parser.add_argument('--openocd-host', dest='openocd_host', default='127.0.0.1')
-    parser.add_argument('--openocd-port', dest='openocd_port', default=OpenOcdTclRpc.DEFAULT_PORT)
+    parser.add_argument(
+        '--openocd-host', dest='openocd_host', default='127.0.0.1')
+    parser.add_argument('--openocd-port', dest='openocd_port',
+                        default=OpenOcdTclRpc.DEFAULT_PORT)
     # parser.add_argument('-b', '--boot-mode', default='undefined')
 
     return parser
@@ -185,6 +214,7 @@ if __name__ == '__main__':
     namespace = parser.parse_args()
 
     if namespace.filepath:
-        upload_file(namespace.filepath, namespace.openocd_host, namespace.openocd_port, run_openocd=namespace.run_openocd)
+        upload_file(namespace.filepath, namespace.openocd_host,
+                    namespace.openocd_port, run_openocd=namespace.run_openocd)
     else:
         print("Nothing to upload")
