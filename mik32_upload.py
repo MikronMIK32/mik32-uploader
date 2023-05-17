@@ -1,14 +1,13 @@
 import shlex
 import argparse
-import sys
 import subprocess
 import os
 from enum import Enum
 from typing import List, NamedTuple
-from drivers.tclrpc import OpenOcdTclRpc
-from drivers.mik32_eeprom import *
-from drivers.mik32_spifi import *
-from drivers.mik32_ram import *
+from tclrpc import OpenOcdTclRpc
+import mik32_eeprom
+import mik32_spifi
+import mik32_ram
 from mik32_parsers import *
 
 
@@ -113,7 +112,7 @@ def read_file(filename: str) -> List[Segment]:
     return segments
 
 
-def upload_file(filename: str, is_resume=True) -> int:
+def upload_file(filename: str, host: str = '127.0.0.1', port: int = OpenOcdTclRpc.DEFAULT_PORT, is_resume=True, run_openocd=False) -> int:
     """
     Write ihex or binary file into MIK32 EEPROM or external flash memory
 
@@ -148,40 +147,23 @@ def upload_file(filename: str, is_resume=True) -> int:
         if (segment.offset + segment.data.__len__()) > (segment_section.offset + segment_section.length):
             raise Exception("ERROR: segment with offset %s and length %s overflows section %s" % (
                 hex(segment.offset), segment.data.__len__(), segment_section.type.name))
-        
-        if segment_section.type == MemoryType.EEPROM:
-            result = write_words(bytes2words(segment.data), is_resume)
-        elif segment_section.type == MemoryType.SPIFI:
-            result = spifi_write_file(segment.data, is_resume)
-        # elif segment_section.type == MemoryType.RAM:
-        #     write_file(filename, is_resume)
-        #     result = write_words(bytes2words(segment.data), is_resume)
 
-    # cmd = shlex.split("%s -s %s -f interface/ftdi/m-link.cfg -f target/mcu32.cfg" % (DEFAULT_OPENOCD_EXEC_FILE_PATH, DEFAULT_OPENOCD_SCRIPTS_PATH), posix=False)
-    # with subprocess.Popen(cmd, shell=True, stdout=subprocess.DEVNULL) as proc:
-    #     if boot_source == "eeprom":
-    #         result = write_words(bytes2words(get_content(filename)))
-    #     elif boot_source == "spifi":
-    #         spifi_write_file(get_content(filename))
-    #         result = 0 # TODO
-    #     elif boot_source == "ram":
-    #         write_file(filename)
-    #         result = 0 # TODO
-    #     else:
-    #         raise Exception("Unsupported boot source, use eeprom or spifi")
-    #         result = 1
-    #     proc.kill()
+        proc: subprocess.Popen | None = None
+        if run_openocd:
+            cmd = shlex.split("%s -s %s -f interface/ftdi/m-link.cfg -f target/mcu32.cfg" % (
+                DEFAULT_OPENOCD_EXEC_FILE_PATH, DEFAULT_OPENOCD_SCRIPTS_PATH), posix=False)
+            proc = subprocess.Popen(
+                cmd, creationflags=subprocess.CREATE_NEW_CONSOLE | subprocess.SW_HIDE)
 
-    # if boot_source == "eeprom":
-    #     result = write_words(bytes2words(get_content(filename)), is_resume)
-    # elif boot_source == "spifi":
-    #     result = spifi_write_file(get_content(filename), is_resume)
-    # elif boot_source == "ram":
-    #     write_file(filename, is_resume)
-    #     result = 0  # TODO
-    # else:
-    #     raise Exception("Unsupported boot source, use eeprom or spifi")
-    #     result = 1
+        with OpenOcdTclRpc() as openocd:
+            if segment_section.type == MemoryType.EEPROM:
+                result = mik32_eeprom.write_words(bytes2words(
+                    segment.data), openocd, is_resume)
+            elif segment_section.type == MemoryType.SPIFI:
+                result = mik32_spifi.spifi_write_file(segment.data, openocd, is_resume)
+
+        if run_openocd and proc is not None:
+            proc.kill()
 
     return result
 
@@ -189,6 +171,10 @@ def upload_file(filename: str, is_resume=True) -> int:
 def createParser():
     parser = argparse.ArgumentParser()
     parser.add_argument('filepath', nargs='?')
+    parser.add_argument('--run-openocd', dest='run_openocd',
+                        action='store_true', default=False)
+    parser.add_argument('--openocd-host', dest='openocd_host', default='127.0.0.1')
+    parser.add_argument('--openocd-port', dest='openocd_port', default=OpenOcdTclRpc.DEFAULT_PORT)
     # parser.add_argument('-b', '--boot-mode', default='undefined')
 
     return parser
@@ -199,6 +185,6 @@ if __name__ == '__main__':
     namespace = parser.parse_args()
 
     if namespace.filepath:
-        upload_file(namespace.filepath)
+        upload_file(namespace.filepath, namespace.openocd_host, namespace.openocd_port, run_openocd=namespace.run_openocd)
     else:
         print("Nothing to upload")

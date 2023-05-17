@@ -1,7 +1,7 @@
 from typing import List
 import time
-from .tclrpc import TclException
-from .tclrpc import OpenOcdTclRpc
+from tclrpc import TclException
+from tclrpc import OpenOcdTclRpc
 
 # --------------------------
 # PM register offset
@@ -193,7 +193,7 @@ def eeprom_check_data_ahb_lite(openocd: OpenOcdTclRpc, words: List[int]) -> int:
     return 0
 
 
-def write_words(words: List[int], write_by_word = False, read_through_apb = False, is_resume=True) -> int:
+def write_words(words: List[int], openocd: OpenOcdTclRpc, write_by_word = False, read_through_apb = False, is_resume=True, ) -> int:
     """
     Write words in MIK32 EEPROM through APB bus
 
@@ -207,52 +207,53 @@ def write_words(words: List[int], write_by_word = False, read_through_apb = Fals
     @return: return 0 if successful, 1 if failed
     """
     print(f"Write {len(words*4)} bytes")
-    with OpenOcdTclRpc() as openocd:
-        openocd.halt()
-        eeprom_sysinit(openocd)
-        eeprom_global_erase(openocd)
-        # eeprom_global_erase_check(openocd)
-        openocd.write_word(EEPROM_REGS_NCYCRL, 1<<EEPROM_N_LD_S  | 3<<EEPROM_N_R_1_S | 1<<EEPROM_N_R_2_S)
-        openocd.write_word(EEPROM_REGS_NCYCEP1, 100000)
-        openocd.write_word(EEPROM_REGS_NCYCEP2, 1000)
-        time.sleep(0.1)
-        word_num:int = 0
-        progress:int = 0
-        print("EEPROM writing...")
-        print("[", end="", flush=True)
-        if write_by_word:
-            for word in words:
-                eeprom_write_word(openocd, word_num*4, word)
+
+    openocd.halt()
+    eeprom_sysinit(openocd)
+    eeprom_global_erase(openocd)
+    # eeprom_global_erase_check(openocd)
+    openocd.write_word(EEPROM_REGS_NCYCRL, 1<<EEPROM_N_LD_S  | 3<<EEPROM_N_R_1_S | 1<<EEPROM_N_R_2_S)
+    openocd.write_word(EEPROM_REGS_NCYCEP1, 100000)
+    openocd.write_word(EEPROM_REGS_NCYCEP2, 1000)
+    time.sleep(0.1)
+    word_num:int = 0
+    progress:int = 0
+    print("EEPROM writing...")
+    print("[", end="", flush=True)
+    if write_by_word:
+        for word in words:
+            eeprom_write_word(openocd, word_num*4, word)
+            word_num += 1
+            curr_progress = int((word_num * 50) / len(words))
+            if curr_progress > progress:
+                print("#"*(curr_progress - progress), end="", flush=True)
+                progress = curr_progress
+    else:
+        page = []
+        page_num = 0
+        page_size = 32
+        while word_num < len(words):
+            if word_num < page_size*(page_num+1):
+                page.append(words[word_num])
                 word_num += 1
-                curr_progress = int((word_num * 50) / len(words))
-                if curr_progress > progress:
-                    print("#"*(curr_progress - progress), end="", flush=True)
-                    progress = curr_progress
-        else:
-            page = []
-            page_num = 0
-            page_size = 32
-            while word_num < len(words):
-                if word_num < page_size*(page_num+1):
-                    page.append(words[word_num])
-                    word_num += 1
-                else:
-                    # print(list(map(lambda word: f"{word:#0x}", page)))
-                    eeprom_write_page(openocd, page_num*page_size*4, page)
-                    page_num += 1
-                    page.clear()
-                curr_progress = int((word_num * 50) / len(words))
-                if curr_progress > progress:
-                    print("#"*(curr_progress - progress), end="", flush=True)
-                    progress = curr_progress
-            eeprom_write_page(openocd, page_num*page_size*4, page)
-        print("]")
-        if read_through_apb:
-            result = eeprom_check_data_apb(openocd, words)
-        else:
-            result = eeprom_check_data_ahb_lite(openocd, words)
-        if is_resume:
-            openocd.resume(0)
+            else:
+                # print(list(map(lambda word: f"{word:#0x}", page)))
+                eeprom_write_page(openocd, page_num*page_size*4, page)
+                page_num += 1
+                page.clear()
+            curr_progress = int((word_num * 50) / len(words))
+            if curr_progress > progress:
+                print("#"*(curr_progress - progress), end="", flush=True)
+                progress = curr_progress
+        eeprom_write_page(openocd, page_num*page_size*4, page)
+    print("]")
+    if read_through_apb:
+        result = eeprom_check_data_apb(openocd, words)
+    else:
+        result = eeprom_check_data_ahb_lite(openocd, words)
+    if is_resume:
+        openocd.resume(0)
+    
     if result == 0:
         print("EEPROM write file done!")
     return result

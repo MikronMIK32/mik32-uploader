@@ -1,7 +1,7 @@
 from typing import List
 import time
-from .tclrpc import TclException
-from .tclrpc import OpenOcdTclRpc
+from tclrpc import TclException
+from tclrpc import OpenOcdTclRpc
 
 # --------------------------
 # PM register offset
@@ -424,7 +424,7 @@ def spifi_write(openocd: OpenOcdTclRpc, address: int, data: List[int], data_len:
     print("written")
 
 
-def spifi_write_file(bytes: List[int], is_resume=True):
+def spifi_write_file(bytes: List[int], openocd: OpenOcdTclRpc, is_resume=True):
     """
     Write bytes in MIK32 External SPIFI Flash memory
 
@@ -435,28 +435,29 @@ def spifi_write_file(bytes: List[int], is_resume=True):
     """
     # print(bytes)
     print(f"Write {len(bytes)} bytes")
-    with OpenOcdTclRpc() as openocd:
-        openocd.halt()
-        spifi_init(openocd)
-        spifi_erase(openocd)
-        print("bin_data_len = ", len(bytes))
-        address = 0
+    
+    openocd.halt()
+    spifi_init(openocd)
+    spifi_erase(openocd)
+    print("bin_data_len = ", len(bytes))
+    address = 0
 
-        for address in range(0, len(bytes), 256):
-            if ((address + 256) > len(bytes)):
-                break
-            print("address = ", address)
-            spifi_write(openocd, address, bytes, 256)
-            if spifi_read_data(openocd, address, 256, bytes) == 1:
-                return 1
+    for address in range(0, len(bytes), 256):
+        if ((address + 256) > len(bytes)):
+            break
+        print("address = ", address)
+        spifi_write(openocd, address, bytes, 256)
+        if spifi_read_data(openocd, address, 256, bytes) == 1:
+            return 1
 
-        if (len(bytes) % 256) != 0:
-            print(
-                f"address = {address}, +{len(bytes) - address-1}[{address + len(bytes) - address-1}]")
-            spifi_write(openocd, address, bytes, len(bytes) - address)
-            if spifi_read_data(openocd, address, len(bytes) - address, bytes) == 1:
-                return 1
-        print("end")
-        if is_resume:
-            openocd.resume(0)
+    if (len(bytes) % 256) != 0:
+        print(
+            f"address = {address}, +{len(bytes) - address-1}[{address + len(bytes) - address-1}]")
+        spifi_write(openocd, address, bytes, len(bytes) - address)
+        if spifi_read_data(openocd, address, len(bytes) - address, bytes) == 1:
+            return 1
+    print("end")
+    if is_resume:
+        openocd.resume(0)
+    
     return 0

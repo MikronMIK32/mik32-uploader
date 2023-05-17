@@ -1,5 +1,5 @@
-from .tclrpc import TclException
-from .tclrpc import OpenOcdTclRpc
+from tclrpc import TclException
+from tclrpc import OpenOcdTclRpc
 from pathlib import Path
 
 def write_file(filename, is_resume=True):
