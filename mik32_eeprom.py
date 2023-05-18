@@ -279,7 +279,7 @@ def write_pages(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc, read_throug
     print("EEPROM writing...")
 
     for page_offset in list(pages):
-        print("Writing page %s, " % hex(page_offset))
+        print("Writing page %s..." % hex(page_offset))
         page_words = bytes2words(pages[page_offset])
         eeprom_write_page(openocd, page_offset, page_words)
         if read_through_apb:

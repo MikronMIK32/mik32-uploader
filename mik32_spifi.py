@@ -199,7 +199,7 @@ def spifi_intrq_clear(openocd: OpenOcdTclRpc):
 
 
 def spifi_init(openocd: OpenOcdTclRpc):
-    print("MCU clock init...")
+    print("MCU clock init")
 
     openocd.write_word(WU_BASE_ADDRESS + WU_Clocks_OFFSET, 0x202)
     openocd.write_word(PM_BASE_ADDRESS + PM_Clk_APB_P_Set_OFFSET, 0xffffffff)
@@ -230,7 +230,6 @@ def spifi_init(openocd: OpenOcdTclRpc):
     openocd.write_word(SPIFI_CONFIG_CLIMIT, 0x00)
 
     time.sleep(1)
-    print("Finish init SPIFI")
 
 
 def SPIFI_WaitIntrqTimeout(openocd: OpenOcdTclRpc, timeout: int) -> int:
@@ -270,7 +269,6 @@ def spifi_write_enable(openocd: OpenOcdTclRpc):
     * «3» – все поля в четырех или двух битовом режиме
     *
     """
-    print("Start write en")
     # spifi_intrq_clear(openocd)
     openocd.write_word(SPIFI_CONFIG_STAT, openocd.read_word(
         SPIFI_CONFIG_STAT) | SPIFI_CONFIG_STAT_INTRQ_M)
@@ -316,7 +314,6 @@ def spifi_read_sreg_1(openocd: OpenOcdTclRpc) -> int:
 
 
 def spifi_wait_busy(openocd: OpenOcdTclRpc):
-    print("Wait busy")
     while 1:
         sreg = spifi_read_sreg_1(openocd)
         if not (sreg & SREG1_BUSY):
@@ -335,7 +332,6 @@ def spifi_chip_erase(openocd: OpenOcdTclRpc):
 
 
 def spifi_read_data(openocd: OpenOcdTclRpc, address: int, byte_count: int, bin_data: List[int]) -> int:
-    print("read data")
     read_data: List[int] = []
     openocd.write_word(SPIFI_CONFIG_ADDR, address)
 
@@ -372,7 +368,7 @@ def spifi_read_data(openocd: OpenOcdTclRpc, address: int, byte_count: int, bin_d
         # print(f"DATA[{i+address}] = {read_data[i]:#0x}")
 
     for i in range(byte_count):
-        if read_data[i] != bin_data[address + i]:
+        if read_data[i] != bin_data[i]:
             print(f"DATA[{i+address}] = {read_data[i]:#0x} - ошибка")
             return 1
     
@@ -382,8 +378,6 @@ def spifi_read_data(openocd: OpenOcdTclRpc, address: int, byte_count: int, bin_d
 def spifi_page_program(openocd: OpenOcdTclRpc, ByteAddress: int, data: List[int], byte_count: int):
     if byte_count > 256:
         raise Exception("Byte count more than 256")
-
-    print("Start page program")
 
     # spifi_intrq_clear(openocd)
     openocd.write_word(SPIFI_CONFIG_STAT, openocd.read_word(
@@ -400,8 +394,6 @@ def spifi_page_program(openocd: OpenOcdTclRpc, ByteAddress: int, data: List[int]
                        (byte_count << SPIFI_CONFIG_CMD_DATALEN_S))
     for i in range(byte_count):
         # openocd.write_word(SPIFI_CONFIG_DATA32, data[i+ByteAddress])
-        print(i)
-        print(data[i])
         openocd.write_memory(SPIFI_CONFIG_DATA32, 8, [data[i]])
     # spifi_intrq_clear(openocd)
     openocd.write_word(SPIFI_CONFIG_STAT, openocd.read_word(
@@ -481,17 +473,17 @@ def write_pages(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc, is_resume=T
     address = 0
 
     for page_offset in list(pages):
-        print("Writing page %s, " % hex(page_offset))
+        print("Writing page %s..." % hex(page_offset))
         page_bytes = pages[page_offset]
 
         spifi_write_enable(openocd)
         spifi_page_program(openocd, page_offset, page_bytes, 256)
         spifi_wait_busy(openocd)
 
-        # result = spifi_read_data(openocd, page_offset, 256, page_bytes)
+        result = spifi_read_data(openocd, page_offset, 256, page_bytes)
         
         if result == 1:
-            print("Page mismatch!")
+            print("Data error")
             return result
 
     if is_resume:
