@@ -123,19 +123,28 @@ def read_file(filename: str) -> List[Segment]:
     return segments
 
 
-def segments_to_pages(segments: List[Segment], page_size: int) -> List[Page]:
+def segment_to_pages(segment: Segment, page_size: int, pages: Dict[int, List[int]]):
+    if segment.memory is None:
+        return
+    
+    internal_offset = segment.offset - segment.memory.offset
+
+    for i, byte in enumerate(segment.data):
+        byte_offset = internal_offset + i
+        page_n = byte_offset // page_size
+        page_offset = page_n * page_size
+
+        if (page_offset) not in pages.keys():
+            pages[page_offset] = [0] * page_size
+        
+        pages[page_offset][byte_offset - page_offset] = byte
+
+
+def segments_to_pages(segments: List[Segment], page_size: int) -> Dict[int, List[int]]:
     pages: Dict[int, List[int]] = {}
 
     for segment in segments:
-        if segment.memory is None:
-            continue
-    
-        internal_offset = segment.offset - segment.memory.offset
-
-        for i, byte in enumerate(segment.data):
-            byte_offset = internal_offset + i
-
-            pages[byte_offset % 256]
+        segment_to_pages(segment, page_size, pages)
     
     return pages
 
@@ -172,27 +181,37 @@ def upload_file(filename: str, host: str = '127.0.0.1', port: int = OpenOcdTclRp
             raise Exception("ERROR: segment with offset %s and length %s overflows section %s" % (
                 hex(segment.offset), segment.data.__len__(), segment.memory.type.name))
 
-    print(segments_to_pages(list(filter(
-        lambda segment: (segment.memory is not None) and (segment.memory.type == MemoryType.EEPROM), segments)), 128))
+    proc: subprocess.Popen | None = None
+    if run_openocd:
+        cmd = shlex.split("%s -s %s -f interface/ftdi/m-link.cfg -f target/mcu32.cfg" % (
+            DEFAULT_OPENOCD_EXEC_FILE_PATH, DEFAULT_OPENOCD_SCRIPTS_PATH), posix=False)
+        proc = subprocess.Popen(
+            cmd, creationflags=subprocess.CREATE_NEW_CONSOLE | subprocess.SW_HIDE)
 
-    # proc: subprocess.Popen | None = None
-    # if run_openocd:
-    #     cmd = shlex.split("%s -s %s -f interface/ftdi/m-link.cfg -f target/mcu32.cfg" % (
-    #         DEFAULT_OPENOCD_EXEC_FILE_PATH, DEFAULT_OPENOCD_SCRIPTS_PATH), posix=False)
-    #     proc = subprocess.Popen(
-    #         cmd, creationflags=subprocess.CREATE_NEW_CONSOLE | subprocess.SW_HIDE)
+    with OpenOcdTclRpc() as openocd:
+        pages_eeprom = segments_to_pages(list(filter(
+            lambda segment: (segment.memory is not None) and (segment.memory.type == MemoryType.EEPROM), segments)), 128)
+        result = mik32_eeprom.write_pages(pages_eeprom, openocd, is_resume)
+        # elif segment_section.type == MemoryType.SPIFI:
+        #     result = mik32_spifi.spifi_write_file(segment.data, openocd, is_resume)
 
-    # with OpenOcdTclRpc() as openocd:
-    #     if segment_section.type == MemoryType.EEPROM:
-    #         result = mik32_eeprom.write_words(bytes2words(
-    #             segment.data), openocd, is_resume)
-    #     elif segment_section.type == MemoryType.SPIFI:
-    #         result = mik32_spifi.spifi_write_file(segment.data, openocd, is_resume)
-
-    # if run_openocd and proc is not None:
-    #     proc.kill()
+    if run_openocd and proc is not None:
+        proc.kill()
 
     return result
+
+
+def bytes2words(arr: List[int]) -> List[int]:
+    bytes = []
+    words = []
+    for byte in arr:
+        bytes.append(byte)
+        if bytes.__len__() == 4:
+            words.append(bytes[0]+2**8*bytes[1]+2**16*bytes[2]+2**24*bytes[3])
+            bytes = []
+    if bytes.__len__() != 0:
+        print("WARNING: skipping not-word-aligned byte")
+    return words
 
 
 def createParser():
@@ -204,6 +223,8 @@ def createParser():
         '--openocd-host', dest='openocd_host', default='127.0.0.1')
     parser.add_argument('--openocd-port', dest='openocd_port',
                         default=OpenOcdTclRpc.DEFAULT_PORT)
+    parser.add_argument('--keep-halt', dest='keep_halt',
+                        action='store_true', default=False)
     # parser.add_argument('-b', '--boot-mode', default='undefined')
 
     return parser
@@ -215,6 +236,6 @@ if __name__ == '__main__':
 
     if namespace.filepath:
         upload_file(namespace.filepath, namespace.openocd_host,
-                    namespace.openocd_port, run_openocd=namespace.run_openocd)
+                    namespace.openocd_port, is_resume=(not namespace.keep_halt), run_openocd=namespace.run_openocd)
     else:
         print("Nothing to upload")
