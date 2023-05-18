@@ -1,4 +1,4 @@
-from typing import List
+from typing import Dict, List
 import time
 from tclrpc import TclException
 from tclrpc import OpenOcdTclRpc
@@ -398,9 +398,10 @@ def spifi_page_program(openocd: OpenOcdTclRpc, ByteAddress: int, data: List[int]
                        (1 << SPIFI_CONFIG_CMD_DOUT_S) |
                        (0 << SPIFI_CONFIG_CMD_POLL_S) |
                        (byte_count << SPIFI_CONFIG_CMD_DATALEN_S))
-    for i in range(ByteAddress, ByteAddress + byte_count, 1):
+    for i in range(byte_count):
         # openocd.write_word(SPIFI_CONFIG_DATA32, data[i+ByteAddress])
-        # print(data[i])
+        print(i)
+        print(data[i])
         openocd.write_memory(SPIFI_CONFIG_DATA32, 8, [data[i]])
     # spifi_intrq_clear(openocd)
     openocd.write_word(SPIFI_CONFIG_STAT, openocd.read_word(
@@ -457,6 +458,42 @@ def spifi_write_file(bytes: List[int], openocd: OpenOcdTclRpc, is_resume=True):
         if spifi_read_data(openocd, address, len(bytes) - address, bytes) == 1:
             return 1
     print("end")
+    if is_resume:
+        openocd.resume(0)
+    
+    return 0
+
+
+def write_pages(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc, is_resume=True):
+    """
+    Write bytes in MIK32 External SPIFI Flash memory
+
+    @bytes: list of bytes to write at offset 0x0
+
+    TODO: implement setting byte array offset, add error handling, 
+    improve progress visualisation
+    """
+    result = 0
+    
+    openocd.halt()
+    spifi_init(openocd)
+    spifi_erase(openocd)
+    address = 0
+
+    for page_offset in list(pages):
+        print("Writing page %s, " % hex(page_offset))
+        page_bytes = pages[page_offset]
+
+        spifi_write_enable(openocd)
+        spifi_page_program(openocd, page_offset, page_bytes, 256)
+        spifi_wait_busy(openocd)
+
+        # result = spifi_read_data(openocd, page_offset, 256, page_bytes)
+        
+        if result == 1:
+            print("Page mismatch!")
+            return result
+
     if is_resume:
         openocd.resume(0)
     

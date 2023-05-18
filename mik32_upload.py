@@ -163,7 +163,7 @@ def upload_file(filename: str, host: str = '127.0.0.1', port: int = OpenOcdTclRp
     # print(DEFAULT_OPENOCD_EXEC_FILE_PATH)
     # print(DEFAULT_OPENOCD_SCRIPTS_PATH)
 
-    result = 1
+    result = 0
 
     if not os.path.exists(filename):
         print("ERROR: File %s does not exist" % filename)
@@ -191,9 +191,14 @@ def upload_file(filename: str, host: str = '127.0.0.1', port: int = OpenOcdTclRp
     with OpenOcdTclRpc() as openocd:
         pages_eeprom = segments_to_pages(list(filter(
             lambda segment: (segment.memory is not None) and (segment.memory.type == MemoryType.EEPROM), segments)), 128)
-        result = mik32_eeprom.write_pages(pages_eeprom, openocd, is_resume)
-        # elif segment_section.type == MemoryType.SPIFI:
-        #     result = mik32_spifi.spifi_write_file(segment.data, openocd, is_resume)
+        pages_spifi = segments_to_pages(list(filter(
+            lambda segment: (segment.memory is not None) and (segment.memory.type == MemoryType.SPIFI), segments)), 256)
+        
+        if (pages_eeprom.__len__() > 0):
+            result |= mik32_eeprom.write_pages(pages_eeprom, openocd, is_resume)
+        if (pages_spifi.__len__() > 0):
+            # print(pages_spifi)
+            result |= mik32_spifi.write_pages(pages_spifi, openocd, is_resume)
 
     if run_openocd and proc is not None:
         proc.kill()
