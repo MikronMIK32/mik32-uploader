@@ -1,3 +1,4 @@
+from enum import Enum
 from typing import Dict, List
 import time
 from tclrpc import TclException
@@ -175,7 +176,7 @@ SPIFI_CONFIG_STAT_VERSION_M = (0xFF << SPIFI_CONFIG_STAT_VERSION_S)
 # --------------------------
 SREG1_BUSY = 1
 
-READ_SREG = 1
+READ_SREG_LEN = 1
 READ_LEN = 256
 TIMEOUT = 100000
 
@@ -188,9 +189,29 @@ MEM_CONFIG_COMMAND = 0x61
 MEM_CONFIG_VALUE = 0x7F
 
 READ_DATA_COMMAND = 0x03
-READ_SREG_COMMAND = 0x05
+
+QUAD_IO_READ_DATA_COMMAND = 0xEB
+
+READ_SREG1_COMMAND = 0x05
+WRITE_SREG1_COMMAND = 0x01
+READ_SREG2_COMMAND = 0x35
+WRITE_SREG2_COMMAND = 0x31
+READ_SREG3_COMMAND = 0x15
+WRITE_SREG3_COMMAND = 0x11
+
+SREG2_QUAD_ENABLE = 9
+SREG2_QUAD_ENABLE_S = (SREG2_QUAD_ENABLE-8)
+SREG2_QUAD_ENABLE_M = 1 << SREG2_QUAD_ENABLE_S
 
 PAGE_PROGRAM_COMMAND = 0x02
+
+QUAD_PAGE_PROGRAM_COMMAND = 0x32
+
+
+class SREG_Num(Enum):
+    SREG1 = 0x00
+    SREG2 = 0x30
+    SREG3 = 0x10
 
 
 def spifi_intrq_clear(openocd: OpenOcdTclRpc):
@@ -278,7 +299,7 @@ def spifi_write_enable(openocd: OpenOcdTclRpc):
     spifi_wait_intrq_timeout(openocd, "Timeout executing write enable command")
 
 
-def spifi_read_sreg_1(openocd: OpenOcdTclRpc) -> int:
+def spifi_read_sreg(openocd: OpenOcdTclRpc, sreg: SREG_Num) -> int:
     read_sreg: int = 0
 
     """
@@ -305,18 +326,18 @@ def spifi_read_sreg_1(openocd: OpenOcdTclRpc) -> int:
     # spifi_intrq_clear(openocd)
     openocd.write_word(SPIFI_CONFIG_STAT, openocd.read_word(
         SPIFI_CONFIG_STAT) | SPIFI_CONFIG_STAT_INTRQ_M)
-    openocd.write_word(SPIFI_CONFIG_CMD, (READ_SREG_COMMAND << SPIFI_CONFIG_CMD_OPCODE_S) |
+    openocd.write_word(SPIFI_CONFIG_CMD, ((READ_SREG1_COMMAND | sreg.value) << SPIFI_CONFIG_CMD_OPCODE_S) |
                        (SPIFI_CONFIG_CMD_FRAMEFORM_OPCODE_NOADDR << SPIFI_CONFIG_CMD_FRAMEFORM_S) |
                        (SPIFI_CONFIG_CMD_FIELDFORM_ALL_SERIAL << SPIFI_CONFIG_CMD_FIELDFORM_S) |
-                       (READ_SREG << SPIFI_CONFIG_CMD_DATALEN_S))
+                       (READ_SREG_LEN << SPIFI_CONFIG_CMD_DATALEN_S))
     spifi_wait_intrq_timeout(openocd, "Timeout executing read sreg1 command")
     return openocd.read_memory(SPIFI_CONFIG_DATA32, 8, 1)[0]
 
 
 def spifi_wait_busy(openocd: OpenOcdTclRpc):
     while 1:
-        sreg = spifi_read_sreg_1(openocd)
-        if not (sreg & SREG1_BUSY):
+        sreg1 = spifi_read_sreg(openocd, SREG_Num.SREG1)
+        if not (sreg1 & SREG1_BUSY):
             break
 
 
@@ -456,6 +477,118 @@ def spifi_write_file(bytes: List[int], openocd: OpenOcdTclRpc, is_resume=True):
     return 0
 
 
+def spifi_quad_page_program(openocd: OpenOcdTclRpc, ByteAddress: int, data: List[int], byte_count: int):
+    if byte_count > 256:
+        raise Exception("Byte count more than 256")
+
+    # spifi_intrq_clear(openocd)
+    openocd.write_word(SPIFI_CONFIG_STAT, openocd.read_word(
+        SPIFI_CONFIG_STAT) | SPIFI_CONFIG_STAT_INTRQ_M)
+    openocd.write_word(SPIFI_CONFIG_ADDR, ByteAddress)
+    openocd.write_word(SPIFI_CONFIG_IDATA, 0x00)
+    openocd.write_word(SPIFI_CONFIG_CLIMIT, 0x00000000)
+    openocd.write_word(SPIFI_CONFIG_CMD, (QUAD_PAGE_PROGRAM_COMMAND << SPIFI_CONFIG_CMD_OPCODE_S) |
+                       (SPIFI_CONFIG_CMD_FRAMEFORM_OPCODE_3ADDR << SPIFI_CONFIG_CMD_FRAMEFORM_S) |
+                       (SPIFI_CONFIG_CMD_FIELDFORM_DATA_PARALLEL << SPIFI_CONFIG_CMD_FIELDFORM_S) |
+                       (0 << SPIFI_CONFIG_CMD_INTLEN_S) |
+                       (1 << SPIFI_CONFIG_CMD_DOUT_S) |
+                       (0 << SPIFI_CONFIG_CMD_POLL_S) |
+                       (byte_count << SPIFI_CONFIG_CMD_DATALEN_S))
+    for i in range(byte_count):
+        # openocd.write_word(SPIFI_CONFIG_DATA32, data[i+ByteAddress])
+        openocd.write_memory(SPIFI_CONFIG_DATA32, 8, [data[i]])
+    # spifi_intrq_clear(openocd)
+    openocd.write_word(SPIFI_CONFIG_STAT, openocd.read_word(
+        SPIFI_CONFIG_STAT) | SPIFI_CONFIG_STAT_INTRQ_M)
+
+
+def spifi_quad_read_data(openocd: OpenOcdTclRpc, address: int, byte_count: int, bin_data: List[int]) -> int:
+    read_data: List[int] = []
+
+    """
+    *
+    * CMD  код операции
+    * OPCODE - код операции
+    * FRAMEFORM - Бит управления полями кода операции и адреса команды:
+    * «0» – резерв;
+    * «1» – выдается только код операции, адреса нет; (SPIFI_CONFIG_CMD_FRAMEFORM_OPCODE_NOADDR)
+    * «2» – код операции и младший байт адреса;
+    * «3» – код операции и два младших байта адреса;
+    * «4» – код операции и три младших байта адреса;
+    * «5» – код операции и 4 байта адреса;
+    * «6» – нет кода операции, три младших байта адре-са;
+    * «7» – нет кода операции, 4 байта адреса
+    *
+    * FIELDFORM - Формат вывода полей команды:
+    * «0» – все поля выводятся в последовательном режиме; (SPIFI_CONFIG_CMD_FIELDFORM_ALL_SERIAL)
+    * «1» – данные выводятся в четырех или двух битовом режиме, а остальные поля в последовательном режиме;
+    * «2» – код операции выводится в последовательном режиме, а остальные в четырех или двух битовом;
+    * «3» – все поля в четырех или двух битовом режиме
+    *
+    """
+    openocd.write_word(SPIFI_CONFIG_ADDR, address)
+    spifi_intrq_clear(openocd)
+    openocd.write_word(SPIFI_CONFIG_CMD, (QUAD_IO_READ_DATA_COMMAND << SPIFI_CONFIG_CMD_OPCODE_S) |
+                       (SPIFI_CONFIG_CMD_FRAMEFORM_OPCODE_3ADDR << SPIFI_CONFIG_CMD_FRAMEFORM_S) |
+                       (SPIFI_CONFIG_CMD_FIELDFORM_OPCODE_SERIAL << SPIFI_CONFIG_CMD_FIELDFORM_S) |
+                       (byte_count << SPIFI_CONFIG_CMD_DATALEN_S) | 
+                       (2 << SPIFI_CONFIG_CMD_INTLEN_M))
+    # spifi_wait_intrq_timeout(openocd, "Timeout executing read data command")
+    # for i in range(2):
+    #     # openocd.write_word(SPIFI_CONFIG_DATA32, data[i+ByteAddress])
+    #     openocd.write_memory(SPIFI_CONFIG_IDATA, 8, 0)
+    
+    openocd.write_word(SPIFI_CONFIG_IDATA, 0x00)
+    openocd.write_word(SPIFI_CONFIG_IDATA, 0x00)
+    for i in range(byte_count):
+        data8 = openocd.read_memory(SPIFI_CONFIG_DATA32, 8, 1)[0]
+        read_data.append(data8)
+        # print(f"DATA[{i+address}] = {read_data[i]:#0x}")
+
+    for i in range(byte_count):
+        if read_data[i] != bin_data[i]:
+            print(f"DATA[{i+address}] = {read_data[i]:#0x} - ошибка")
+            return 1
+    
+    return 0
+
+
+def spifi_quad_enable(openocd):
+    sreg2 = spifi_read_sreg(openocd, SREG_Num.SREG2)
+
+    spifi_write_enable(openocd)
+    openocd.write_word(SPIFI_CONFIG_STAT, openocd.read_word(
+        SPIFI_CONFIG_STAT) | SPIFI_CONFIG_STAT_INTRQ_M)
+    openocd.write_word(SPIFI_CONFIG_CMD, (WRITE_SREG2_COMMAND << SPIFI_CONFIG_CMD_OPCODE_S) |
+                       (SPIFI_CONFIG_CMD_FRAMEFORM_OPCODE_3ADDR << SPIFI_CONFIG_CMD_FRAMEFORM_S) |
+                       (SPIFI_CONFIG_CMD_FIELDFORM_ALL_SERIAL << SPIFI_CONFIG_CMD_FIELDFORM_S) |
+                       (0 << SPIFI_CONFIG_CMD_INTLEN_S) |
+                       (1 << SPIFI_CONFIG_CMD_DOUT_S) |
+                       (0 << SPIFI_CONFIG_CMD_POLL_S) |
+                       (1 << SPIFI_CONFIG_CMD_DATALEN_S))
+    openocd.write_memory(SPIFI_CONFIG_DATA32, 8, [sreg2 | SREG2_QUAD_ENABLE_M])
+
+    spifi_wait_busy(openocd)
+
+
+def spifi_quad_disable(openocd):
+    sreg2 = spifi_read_sreg(openocd, SREG_Num.SREG2)
+
+    spifi_write_enable(openocd)
+    openocd.write_word(SPIFI_CONFIG_STAT, openocd.read_word(
+        SPIFI_CONFIG_STAT) | SPIFI_CONFIG_STAT_INTRQ_M)
+    openocd.write_word(SPIFI_CONFIG_CMD, (WRITE_SREG2_COMMAND << SPIFI_CONFIG_CMD_OPCODE_S) |
+                       (SPIFI_CONFIG_CMD_FRAMEFORM_OPCODE_3ADDR << SPIFI_CONFIG_CMD_FRAMEFORM_S) |
+                       (SPIFI_CONFIG_CMD_FIELDFORM_ALL_SERIAL << SPIFI_CONFIG_CMD_FIELDFORM_S) |
+                       (0 << SPIFI_CONFIG_CMD_INTLEN_S) |
+                       (1 << SPIFI_CONFIG_CMD_DOUT_S) |
+                       (0 << SPIFI_CONFIG_CMD_POLL_S) |
+                       (1 << SPIFI_CONFIG_CMD_DATALEN_S))
+    openocd.write_memory(SPIFI_CONFIG_DATA32, 8, [sreg2 & (~SREG2_QUAD_ENABLE_M)])
+
+    spifi_wait_busy(openocd)
+
+
 def write_pages(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc, is_resume=True):
     """
     Write bytes in MIK32 External SPIFI Flash memory
@@ -472,12 +605,14 @@ def write_pages(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc, is_resume=T
     spifi_erase(openocd)
     address = 0
 
+    spifi_quad_enable(openocd)
+
     for page_offset in list(pages):
         print("Writing page %s..." % hex(page_offset))
         page_bytes = pages[page_offset]
 
         spifi_write_enable(openocd)
-        spifi_page_program(openocd, page_offset, page_bytes, 256)
+        spifi_quad_page_program(openocd, page_offset, page_bytes, 256)
         spifi_wait_busy(openocd)
 
         result = spifi_read_data(openocd, page_offset, 256, page_bytes)
@@ -485,6 +620,8 @@ def write_pages(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc, is_resume=T
         if result == 1:
             print("Data error")
             return result
+
+    spifi_quad_disable(openocd)
 
     if is_resume:
         openocd.resume(0)
