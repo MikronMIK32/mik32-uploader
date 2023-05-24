@@ -149,7 +149,7 @@ def segments_to_pages(segments: List[Segment], page_size: int) -> Dict[int, List
     return pages
 
 
-def upload_file(filename: str, host: str = '127.0.0.1', port: int = OpenOcdTclRpc.DEFAULT_PORT, is_resume=True, run_openocd=False) -> int:
+def upload_file(filename: str, host: str = '127.0.0.1', port: int = OpenOcdTclRpc.DEFAULT_PORT, is_resume=True, run_openocd=False, use_quad_spi=False) -> int:
     """
     Write ihex or binary file into MIK32 EEPROM or external flash memory
 
@@ -198,7 +198,7 @@ def upload_file(filename: str, host: str = '127.0.0.1', port: int = OpenOcdTclRp
             result |= mik32_eeprom.write_pages(pages_eeprom, openocd, is_resume)
         if (pages_spifi.__len__() > 0):
             # print(pages_spifi)
-            result |= mik32_spifi.write_pages(pages_spifi, openocd, is_resume)
+            result |= mik32_spifi.write_pages(pages_spifi, openocd, is_resume, use_quad_spi)
 
     if run_openocd and proc is not None:
         proc.kill()
@@ -224,6 +224,8 @@ def createParser():
     parser.add_argument('filepath', nargs='?')
     parser.add_argument('--run-openocd', dest='run_openocd',
                         action='store_true', default=False)
+    parser.add_argument('--use-quad-spi', dest='use_quad_spi',
+                        action='store_true', default=False)
     parser.add_argument(
         '--openocd-host', dest='openocd_host', default='127.0.0.1')
     parser.add_argument('--openocd-port', dest='openocd_port',
@@ -241,6 +243,6 @@ if __name__ == '__main__':
 
     if namespace.filepath:
         upload_file(namespace.filepath, namespace.openocd_host,
-                    namespace.openocd_port, is_resume=(not namespace.keep_halt), run_openocd=namespace.run_openocd)
+                    namespace.openocd_port, is_resume=(not namespace.keep_halt), run_openocd=namespace.run_openocd, use_quad_spi=namespace.use_quad_spi)
     else:
         print("Nothing to upload")
