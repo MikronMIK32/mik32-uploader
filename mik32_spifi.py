@@ -190,7 +190,7 @@ MEM_CONFIG_VALUE = 0x7F
 
 READ_DATA_COMMAND = 0x03
 
-QUAD_IO_READ_DATA_COMMAND = 0xEB
+FAST_READ_QUAD_OUTPUT_COMMAND = 0x6B
 
 READ_SREG1_COMMAND = 0x05
 WRITE_SREG1_COMMAND = 0x01
@@ -227,22 +227,6 @@ def spifi_init(openocd: OpenOcdTclRpc):
     openocd.write_word(PM_BASE_ADDRESS + PM_Clk_APB_M_Set_OFFSET, 0xffffffff)
     openocd.write_word(PM_BASE_ADDRESS + PM_Clk_AHB_Set_OFFSET, 0xffffffff)
 
-    """
-    *
-    * STAT - регистр статуса
-    * INTRQ - Запись «1» в бит сбрасывает запрос на прерывание от контроллера SPIFI
-    * RESET - Бит предназначен для того, чтобы прервать текущую команду периферийного режима или режима памяти
-    *
-    * ADDR - Исполнительный адрес команды
-    *
-    * IDATA - регистр промежуточных данных
-    *
-    * CLIMIT - Верхний предел кэшируемой памяти
-    *
-    * CTRL - регистр управления
-    * INTEN - Бит разрешения прерывания при завершении выполнения команды (если этот бит равен «1», то прерывание разрешено)
-    *
-    """
     openocd.write_word(SPIFI_CONFIG_STAT, openocd.read_word(SPIFI_CONFIG_STAT) |
                        SPIFI_CONFIG_STAT_INTRQ_M |
                        SPIFI_CONFIG_STAT_RESET_M)
@@ -269,27 +253,6 @@ def spifi_wait_intrq_timeout(openocd: OpenOcdTclRpc, error_message: str):
 
 
 def spifi_write_enable(openocd: OpenOcdTclRpc):
-    """
-    *
-    * CMD  код операции
-    * OPCODE - код операции
-    * FRAMEFORM - Бит управления полями кода операции и адреса команды:
-    * «0» – резерв;
-    * «1» – выдается только код операции, адреса нет; (SPIFI_CONFIG_CMD_FRAMEFORM_OPCODE_NOADDR)
-    * «2» – код операции и младший байт адреса;
-    * «3» – код операции и два младших байта адреса;
-    * «4» – код операции и три младших байта адреса;
-    * «5» – код операции и 4 байта адреса;
-    * «6» – нет кода операции, три младших байта адре-са;
-    * «7» – нет кода операции, 4 байта адреса
-    *
-    * FIELDFORM - Формат вывода полей команды:
-    * «0» – все поля выводятся в последовательном режиме; (SPIFI_CONFIG_CMD_FIELDFORM_ALL_SERIAL)
-    * «1» – данные выводятся в четырех или двух битовом режиме, а остальные поля в последовательном режиме;
-    * «2» – код операции выводится в последовательном режиме, а остальные в четырех или двух битовом;
-    * «3» – все поля в четырех или двух битовом режиме
-    *
-    """
     # spifi_intrq_clear(openocd)
     openocd.write_word(SPIFI_CONFIG_STAT, openocd.read_word(
         SPIFI_CONFIG_STAT) | SPIFI_CONFIG_STAT_INTRQ_M)
@@ -301,28 +264,6 @@ def spifi_write_enable(openocd: OpenOcdTclRpc):
 
 def spifi_read_sreg(openocd: OpenOcdTclRpc, sreg: SREG_Num) -> int:
     read_sreg: int = 0
-
-    """
-    *
-    * CMD  код операции
-    * OPCODE - код операции
-    * FRAMEFORM - Бит управления полями кода операции и адреса команды:
-    * «0» – резерв;
-    * «1» – выдается только код операции, адреса нет; (SPIFI_CONFIG_CMD_FRAMEFORM_OPCODE_NOADDR)
-    * «2» – код операции и младший байт адреса;
-    * «3» – код операции и два младших байта адреса;
-    * «4» – код операции и три младших байта адреса;
-    * «5» – код операции и 4 байта адреса;
-    * «6» – нет кода операции, три младших байта адре-са;
-    * «7» – нет кода операции, 4 байта адреса
-    *
-    * FIELDFORM - Формат вывода полей команды:
-    * «0» – все поля выводятся в последовательном режиме; (SPIFI_CONFIG_CMD_FIELDFORM_ALL_SERIAL)
-    * «1» – данные выводятся в четырех или двух битовом режиме, а остальные поля в последовательном режиме;
-    * «2» – код операции выводится в последовательном режиме, а остальные в четырех или двух битовом;
-    * «3» – все поля в четырех или двух битовом режиме
-    *
-    """
     # spifi_intrq_clear(openocd)
     openocd.write_word(SPIFI_CONFIG_STAT, openocd.read_word(
         SPIFI_CONFIG_STAT) | SPIFI_CONFIG_STAT_INTRQ_M)
@@ -356,27 +297,6 @@ def spifi_read_data(openocd: OpenOcdTclRpc, address: int, byte_count: int, bin_d
     read_data: List[int] = []
     openocd.write_word(SPIFI_CONFIG_ADDR, address)
 
-    """
-    *
-    * CMD  код операции
-    * OPCODE - код операции
-    * FRAMEFORM - Бит управления полями кода операции и адреса команды:
-    * «0» – резерв;
-    * «1» – выдается только код операции, адреса нет; (SPIFI_CONFIG_CMD_FRAMEFORM_OPCODE_NOADDR)
-    * «2» – код операции и младший байт адреса;
-    * «3» – код операции и два младших байта адреса;
-    * «4» – код операции и три младших байта адреса;
-    * «5» – код операции и 4 байта адреса;
-    * «6» – нет кода операции, три младших байта адре-са;
-    * «7» – нет кода операции, 4 байта адреса
-    *
-    * FIELDFORM - Формат вывода полей команды:
-    * «0» – все поля выводятся в последовательном режиме; (SPIFI_CONFIG_CMD_FIELDFORM_ALL_SERIAL)
-    * «1» – данные выводятся в четырех или двух битовом режиме, а остальные поля в последовательном режиме;
-    * «2» – код операции выводится в последовательном режиме, а остальные в четырех или двух битовом;
-    * «3» – все поля в четырех или двух битовом режиме
-    *
-    """
     spifi_intrq_clear(openocd)
     openocd.write_word(SPIFI_CONFIG_CMD, (READ_DATA_COMMAND << SPIFI_CONFIG_CMD_OPCODE_S) |
                        (SPIFI_CONFIG_CMD_FRAMEFORM_OPCODE_3ADDR << SPIFI_CONFIG_CMD_FRAMEFORM_S) |
@@ -439,14 +359,6 @@ def spifi_write(openocd: OpenOcdTclRpc, address: int, data: List[int], data_len:
 
 
 def spifi_write_file(bytes: List[int], openocd: OpenOcdTclRpc, is_resume=True):
-    """
-    Write bytes in MIK32 External SPIFI Flash memory
-
-    @bytes: list of bytes to write at offset 0x0
-
-    TODO: implement setting byte array offset, add error handling, 
-    improve progress visualisation
-    """
     # print(bytes)
     print(f"Write {len(bytes)} bytes")
     
@@ -502,57 +414,6 @@ def spifi_quad_page_program(openocd: OpenOcdTclRpc, ByteAddress: int, data: List
         SPIFI_CONFIG_STAT) | SPIFI_CONFIG_STAT_INTRQ_M)
 
 
-def spifi_quad_read_data(openocd: OpenOcdTclRpc, address: int, byte_count: int, bin_data: List[int]) -> int:
-    read_data: List[int] = []
-
-    """
-    *
-    * CMD  код операции
-    * OPCODE - код операции
-    * FRAMEFORM - Бит управления полями кода операции и адреса команды:
-    * «0» – резерв;
-    * «1» – выдается только код операции, адреса нет; (SPIFI_CONFIG_CMD_FRAMEFORM_OPCODE_NOADDR)
-    * «2» – код операции и младший байт адреса;
-    * «3» – код операции и два младших байта адреса;
-    * «4» – код операции и три младших байта адреса;
-    * «5» – код операции и 4 байта адреса;
-    * «6» – нет кода операции, три младших байта адре-са;
-    * «7» – нет кода операции, 4 байта адреса
-    *
-    * FIELDFORM - Формат вывода полей команды:
-    * «0» – все поля выводятся в последовательном режиме; (SPIFI_CONFIG_CMD_FIELDFORM_ALL_SERIAL)
-    * «1» – данные выводятся в четырех или двух битовом режиме, а остальные поля в последовательном режиме;
-    * «2» – код операции выводится в последовательном режиме, а остальные в четырех или двух битовом;
-    * «3» – все поля в четырех или двух битовом режиме
-    *
-    """
-    openocd.write_word(SPIFI_CONFIG_ADDR, address)
-    spifi_intrq_clear(openocd)
-    openocd.write_word(SPIFI_CONFIG_CMD, (QUAD_IO_READ_DATA_COMMAND << SPIFI_CONFIG_CMD_OPCODE_S) |
-                       (SPIFI_CONFIG_CMD_FRAMEFORM_OPCODE_3ADDR << SPIFI_CONFIG_CMD_FRAMEFORM_S) |
-                       (SPIFI_CONFIG_CMD_FIELDFORM_OPCODE_SERIAL << SPIFI_CONFIG_CMD_FIELDFORM_S) |
-                       (byte_count << SPIFI_CONFIG_CMD_DATALEN_S) | 
-                       (2 << SPIFI_CONFIG_CMD_INTLEN_M))
-    # spifi_wait_intrq_timeout(openocd, "Timeout executing read data command")
-    # for i in range(2):
-    #     # openocd.write_word(SPIFI_CONFIG_DATA32, data[i+ByteAddress])
-    #     openocd.write_memory(SPIFI_CONFIG_IDATA, 8, 0)
-    
-    openocd.write_word(SPIFI_CONFIG_IDATA, 0x00)
-    openocd.write_word(SPIFI_CONFIG_IDATA, 0x00)
-    for i in range(byte_count):
-        data8 = openocd.read_memory(SPIFI_CONFIG_DATA32, 8, 1)[0]
-        read_data.append(data8)
-        # print(f"DATA[{i+address}] = {read_data[i]:#0x}")
-
-    for i in range(byte_count):
-        if read_data[i] != bin_data[i]:
-            print(f"DATA[{i+address}] = {read_data[i]:#0x} - ошибка")
-            return 1
-    
-    return 0
-
-
 def spifi_quad_enable(openocd):
     sreg2 = spifi_read_sreg(openocd, SREG_Num.SREG2)
 
@@ -590,14 +451,6 @@ def spifi_quad_disable(openocd):
 
 
 def write_pages(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc, is_resume=True):
-    """
-    Write bytes in MIK32 External SPIFI Flash memory
-
-    @bytes: list of bytes to write at offset 0x0
-
-    TODO: implement setting byte array offset, add error handling, 
-    improve progress visualisation
-    """
     result = 0
     
     openocd.halt()
