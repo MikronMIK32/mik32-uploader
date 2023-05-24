@@ -1,7 +1,7 @@
 from typing import Dict, List
 import time
 from tclrpc import OpenOcdTclRpc
-from mik32_upload import Segment, MemorySection, bytes2words
+from utils import bytes2words
 
 # --------------------------
 # PM register offset

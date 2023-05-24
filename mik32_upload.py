@@ -193,30 +193,22 @@ def upload_file(filename: str, host: str = '127.0.0.1', port: int = OpenOcdTclRp
             lambda segment: (segment.memory is not None) and (segment.memory.type == MemoryType.EEPROM), segments)), 128)
         pages_spifi = segments_to_pages(list(filter(
             lambda segment: (segment.memory is not None) and (segment.memory.type == MemoryType.SPIFI), segments)), 256)
+        segments_ram = list(filter(
+            lambda segment: (segment.memory is not None) and (segment.memory.type == MemoryType.RAM), segments))
         
         if (pages_eeprom.__len__() > 0):
             result |= mik32_eeprom.write_pages(pages_eeprom, openocd, is_resume)
         if (pages_spifi.__len__() > 0):
             # print(pages_spifi)
             result |= mik32_spifi.write_pages(pages_spifi, openocd, is_resume, use_quad_spi)
+        if (segments_ram.__len__() > 0):
+            mik32_ram.write_segments(segments_ram, openocd, is_resume)
+            result |= 0
 
     if run_openocd and proc is not None:
         proc.kill()
 
     return result
-
-
-def bytes2words(arr: List[int]) -> List[int]:
-    bytes = []
-    words = []
-    for byte in arr:
-        bytes.append(byte)
-        if bytes.__len__() == 4:
-            words.append(bytes[0]+2**8*bytes[1]+2**16*bytes[2]+2**24*bytes[3])
-            bytes = []
-    if bytes.__len__() != 0:
-        print("WARNING: skipping not-word-aligned byte")
-    return words
 
 
 def createParser():
