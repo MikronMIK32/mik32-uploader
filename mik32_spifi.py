@@ -181,6 +181,7 @@ READ_LEN = 256
 TIMEOUT = 100000
 
 CHIP_ERASE_COMMAND = 0xC7
+SECTOR_ERASE_COMMAND = 0x20
 
 WRITE_ENABLE_COMMAND = 0x06
 WRITE_DISABLE_COMMAND = 0x04
@@ -283,12 +284,24 @@ def spifi_wait_busy(openocd: OpenOcdTclRpc):
 
 
 def spifi_chip_erase(openocd: OpenOcdTclRpc):
-    print("Start erase")
+    print("Chip erase...")
+    # spifi_intrq_clear(openocd)
+    openocd.write_word(SPIFI_CONFIG_STAT, openocd.read_word(
+        SPIFI_CONFIG_STAT) | SPIFI_CONFIG_STAT_INTRQ_M)
+    openocd.write_word(SPIFI_CONFIG_CMD, (SECTOR_ERASE_COMMAND << SPIFI_CONFIG_CMD_OPCODE_S) |
+                       (SPIFI_CONFIG_CMD_FRAMEFORM_OPCODE_NOADDR << SPIFI_CONFIG_CMD_FRAMEFORM_S) |
+                       (SPIFI_CONFIG_CMD_FIELDFORM_ALL_SERIAL << SPIFI_CONFIG_CMD_FIELDFORM_S))
+    spifi_wait_intrq_timeout(openocd, "Timeout executing chip erase command")
+
+
+def spifi_sector_erase(openocd: OpenOcdTclRpc, address: int):
+    print("Erase sector %s..." % hex(address))
+    openocd.write_word(SPIFI_CONFIG_ADDR, address)
     # spifi_intrq_clear(openocd)
     openocd.write_word(SPIFI_CONFIG_STAT, openocd.read_word(
         SPIFI_CONFIG_STAT) | SPIFI_CONFIG_STAT_INTRQ_M)
     openocd.write_word(SPIFI_CONFIG_CMD, (CHIP_ERASE_COMMAND << SPIFI_CONFIG_CMD_OPCODE_S) |
-                       (SPIFI_CONFIG_CMD_FRAMEFORM_OPCODE_NOADDR << SPIFI_CONFIG_CMD_FRAMEFORM_S) |
+                       (SPIFI_CONFIG_CMD_FRAMEFORM_OPCODE_3ADDR << SPIFI_CONFIG_CMD_FRAMEFORM_S) |
                        (SPIFI_CONFIG_CMD_FIELDFORM_ALL_SERIAL << SPIFI_CONFIG_CMD_FIELDFORM_S))
     spifi_wait_intrq_timeout(openocd, "Timeout executing chip erase command")
 
@@ -341,10 +354,21 @@ def spifi_page_program(openocd: OpenOcdTclRpc, ByteAddress: int, data: List[int]
         SPIFI_CONFIG_STAT) | SPIFI_CONFIG_STAT_INTRQ_M)
 
 
-def spifi_erase(openocd):
-    spifi_write_enable(openocd)
-    spifi_chip_erase(openocd)
-    spifi_wait_busy(openocd)
+class EraseType(Enum):
+    CHIP_ERASE = CHIP_ERASE_COMMAND
+    SECTOR_ERASE = SECTOR_ERASE_COMMAND
+
+
+def spifi_erase(openocd, erase_type: EraseType = EraseType.CHIP_ERASE, sectors: List[int] = []):
+    if erase_type == EraseType.CHIP_ERASE:
+        spifi_write_enable(openocd)
+        spifi_chip_erase(openocd)
+        spifi_wait_busy(openocd)
+    elif erase_type == EraseType.SECTOR_ERASE:
+        for sector in sectors:
+            spifi_write_enable(openocd)
+            spifi_sector_erase(openocd, sector)
+            spifi_wait_busy(openocd)
 
 
 def spifi_write(openocd: OpenOcdTclRpc, address: int, data: List[int], data_len: int):
@@ -450,12 +474,19 @@ def spifi_quad_disable(openocd):
     spifi_wait_busy(openocd)
 
 
+def get_segments_list(pages_offsets: List[int], segment_size: int) -> List[int]:
+    segments = set()
+    for offset in pages_offsets:
+        segments.add(offset & ~(segment_size - 1))
+    return list(segments)
+
+
 def write_pages(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc, is_resume=True):
     result = 0
     
     openocd.halt()
     spifi_init(openocd)
-    spifi_erase(openocd)
+    spifi_erase(openocd, EraseType.SECTOR_ERASE, get_segments_list(list(pages), 4*1024))
     address = 0
 
     spifi_quad_enable(openocd)
