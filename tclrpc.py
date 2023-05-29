@@ -128,8 +128,20 @@ class OpenOcdTclRpc:
         return self.run(f"capture \"write_memory {address:#0x} {width} {{{data_string}}}\"")
     
     def write_word(self, address:int, word:int):
-        return self.write_memory(address, 32, [word])
+        return self.run(f"capture \"mww {address:#0x} {word}\"")
 
+    # def read_memory(self, address:int, width:int, count:int):
+    #     """This function provides an efficient way to read the target memory from a Tcl script. 
+    #     A Tcl list containing the requested memory elements is returned by this function.
+
+    #     address ... target memory address
+        
+    #     width ... memory access bit size, can be 8, 16, 32 or 64
+        
+    #     count ... number of elements to read """
+    #     data = self.run(f"capture \"read_memory {address:#0x} {width} {count}\"").split(" ")
+    #     return list(map(lambda word: int(word, base=16), data))
+    
     def read_memory(self, address:int, width:int, count:int):
         """This function provides an efficient way to read the target memory from a Tcl script. 
         A Tcl list containing the requested memory elements is returned by this function.
@@ -139,19 +151,23 @@ class OpenOcdTclRpc:
         width ... memory access bit size, can be 8, 16, 32 or 64
         
         count ... number of elements to read """
-        data = self.run(f"capture \"read_memory {address:#0x} {width} {count}\"").split(" ")
+        data = self.run(f"capture \"mem2array {width} {address:#0x} {count}\"").split(" ")
         return list(map(lambda word: int(word, base=16), data))
     
-    def read_word(self, address:int):
-        """This function provides an efficient way to read the target memory from a Tcl script. 
-        A Tcl list containing the requested memory elements is returned by this function.
+    # def read_word(self, address:int):
+    #     """This function provides an efficient way to read the target memory from a Tcl script. 
+    #     A Tcl list containing the requested memory elements is returned by this function.
 
-        address ... target memory address
+    #     address ... target memory address
         
-        width ... memory access bit size, can be 8, 16, 32 or 64
+    #     width ... memory access bit size, can be 8, 16, 32 or 64
         
-        count ... number of elements to read """
-        data = self.run(f"capture \"read_memory {address:#0x} 32 1\"").split(" ")
-        return int(data[0], base=16)
+    #     count ... number of elements to read """
+    #     data = self.run(f"capture \"read_memory {address:#0x} 32 1\"").split(" ")
+    #     return int(data[0], base=16)
+
+    def read_word(self, address:int):
+        data = self.run(f"capture \"mdw {address:#0x}\"").split(" ")
+        return int(data[1], base=16)
 
 
