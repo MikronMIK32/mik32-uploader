@@ -319,7 +319,8 @@ def spifi_read_data(openocd: OpenOcdTclRpc, address: int, byte_count: int, bin_d
     for i in range(byte_count):
         data8 = openocd.read_memory(SPIFI_CONFIG_DATA32, 8, 1)[0]
         read_data.append(data8)
-        # print(f"DATA[{i+address}] = {read_data[i]:#0x}")
+        if is_verbose:
+            print(f"DATA[{i+address}] = {read_data[i]:#0x}")
 
     for i in range(byte_count):
         if read_data[i] != bin_data[i]:

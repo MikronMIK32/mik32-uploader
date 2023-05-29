@@ -26,6 +26,7 @@ DEFAULT_OPENOCD_SCRIPTS_PATH = os.path.join(
 
 supported_formats = [".hex"]
 
+is_verbose = False
 
 def test_connection():
     output = ""
@@ -244,6 +245,8 @@ def createParser():
                         default=OpenOcdTclRpc.DEFAULT_PORT)
     parser.add_argument('--keep-halt', dest='keep_halt',
                         action='store_true', default=False)
+    parser.add_argument('--verbose', dest='is_verbose',
+                        action='store_true', default=False)
     # parser.add_argument('-b', '--boot-mode', default='undefined')
 
     return parser
@@ -252,6 +255,7 @@ def createParser():
 if __name__ == '__main__':
     parser = createParser()
     namespace = parser.parse_args()
+    is_verbose = namespace.is_verbose
 
     if namespace.filepath:
         upload_file(
