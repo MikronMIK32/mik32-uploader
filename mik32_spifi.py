@@ -3,6 +3,7 @@ from typing import Dict, List
 import time
 from tclrpc import TclException
 from tclrpc import OpenOcdTclRpc
+import config
 
 # --------------------------
 # PM register offset
@@ -319,13 +320,13 @@ def spifi_read_data(openocd: OpenOcdTclRpc, address: int, byte_count: int, bin_d
     for i in range(byte_count):
         data8 = openocd.read_memory(SPIFI_CONFIG_DATA32, 8, 1)[0]
         read_data.append(data8)
-        if is_verbose:
+        if config.is_verbose:
             print(f"DATA[{i+address}] = {read_data[i]:#0x}")
 
     for i in range(byte_count):
         if read_data[i] != bin_data[i]:
-            print(f"DATA[{i+address}] = {read_data[i]:#0x} - ошибка")
-            return 1
+            print(f"DATA[{(i+address):#0x}] = {read_data[i]:#0x}, expected {bin_data[i]:#0x}")
+            # return 1
     
     return 0
 

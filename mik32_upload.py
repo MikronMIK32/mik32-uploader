@@ -9,6 +9,7 @@ import mik32_eeprom
 import mik32_spifi
 import mik32_ram
 from mik32_parsers import *
+import config
 
 
 # class bcolors(Enum):
@@ -245,7 +246,7 @@ def createParser():
                         default=OpenOcdTclRpc.DEFAULT_PORT)
     parser.add_argument('--keep-halt', dest='keep_halt',
                         action='store_true', default=False)
-    parser.add_argument('--verbose', dest='is_verbose',
+    parser.add_argument('-v', '--verbose', dest='is_verbose',
                         action='store_true', default=False)
     # parser.add_argument('-b', '--boot-mode', default='undefined')
 
@@ -255,7 +256,7 @@ def createParser():
 if __name__ == '__main__':
     parser = createParser()
     namespace = parser.parse_args()
-    is_verbose = namespace.is_verbose
+    config.is_verbose = namespace.is_verbose
 
     if namespace.filepath:
         upload_file(
