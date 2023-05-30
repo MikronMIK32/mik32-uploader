@@ -67,7 +67,7 @@ mik32v0_sections: List[MemorySection] = [
 @dataclass
 class Segment:
     offset: int
-    memory: MemorySection or None
+    memory: Union[MemorySection, None]
     data: List[int]
 
 
@@ -205,7 +205,6 @@ def upload_file(
     if run_openocd:
         cmd = shlex.split("%s -s %s -f interface/ftdi/m-link.cfg -f target/mik32.cfg" % (
             openocd_path, scripts_path), posix=False)
-        print(cmd)
         proc = subprocess.Popen(
             cmd, creationflags=subprocess.CREATE_NEW_CONSOLE | subprocess.SW_HIDE)
 
