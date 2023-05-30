@@ -166,7 +166,8 @@ def upload_file(
     port: int = OpenOcdTclRpc.DEFAULT_PORT,
     is_resume=True,
     run_openocd=False,
-    use_quad_spi=False
+    use_quad_spi=False,
+    use_chip_erase=False,
 ) -> int:
     """
     Write ihex or binary file into MIK32 EEPROM or external flash memory
@@ -222,7 +223,7 @@ def upload_file(
         if (pages_spifi.__len__() > 0):
             # print(pages_spifi)
             result |= mik32_spifi.write_pages(
-                pages_spifi, openocd, is_resume, use_quad_spi)
+                pages_spifi, openocd, is_resume, use_quad_spi, use_chip_erase)
         if (segments_ram.__len__() > 0):
             mik32_ram.write_segments(segments_ram, openocd, is_resume)
             result |= 0
@@ -254,6 +255,8 @@ def createParser():
                         action='store_true', default=False)
     parser.add_argument('-v', '--verbose', dest='is_verbose',
                         action='store_true', default=False)
+    parser.add_argument('--use-chip-erase', dest='use_chip_erase',
+                        action='store_true', default=False)
     # parser.add_argument('-b', '--boot-mode', default='undefined')
 
     return parser
@@ -275,6 +278,7 @@ if __name__ == '__main__':
             is_resume=(not namespace.keep_halt),
             run_openocd=namespace.run_openocd,
             use_quad_spi=namespace.use_quad_spi,
+            use_chip_erase=namespace.use_chip_erase,
         )
     else:
         print("Nothing to upload")
