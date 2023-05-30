@@ -3,13 +3,12 @@ import argparse
 import subprocess
 import os
 from enum import Enum
-from typing import List, Dict, NamedTuple, Union
+from typing import List, Dict, NamedTuple
 from tclrpc import OpenOcdTclRpc
 import mik32_eeprom
 import mik32_spifi
 import mik32_ram
 from mik32_parsers import *
-import config
 
 
 # class bcolors(Enum):
@@ -26,8 +25,6 @@ DEFAULT_OPENOCD_SCRIPTS_PATH = os.path.join(
     "openocd", "share", "openocd", "scripts")
 
 supported_formats = [".hex"]
-
-is_verbose = False
 
 
 def test_connection():
@@ -53,11 +50,8 @@ class MemorySection(NamedTuple):
     length: int  # Memory section length in bytes
 
 
-MEMORY_SECTION_BOOT = MemorySection(MemoryType.BOOT, 0x0, 16 * 1024)
-
-
 mik32v0_sections: List[MemorySection] = [
-    MEMORY_SECTION_BOOT,
+    MemorySection(MemoryType.BOOT, 0x0, 16 * 1024),
     MemorySection(MemoryType.EEPROM, 0x01000000, 8 * 1024),
     MemorySection(MemoryType.RAM, 0x02000000, 16 * 1024),
     MemorySection(MemoryType.SPIFI, 0x80000000, 8 * 1024 * 1024),
@@ -67,7 +61,7 @@ mik32v0_sections: List[MemorySection] = [
 @dataclass
 class Segment:
     offset: int
-    memory: Union[MemorySection, None]
+    memory: MemorySection | None
     data: List[int]
 
 
@@ -80,7 +74,7 @@ def belongs_memory_section(memory_section: MemorySection, offset: int) -> bool:
     return True
 
 
-def find_memory_section(offset: int) -> Union[MemorySection, None]:
+def find_memory_section(offset: int) -> MemorySection | None:
     for section in mik32v0_sections:
         if belongs_memory_section(section, offset):
             return section
@@ -100,7 +94,7 @@ def read_file(filename: str) -> List[Segment]:
         with open(filename, "rb") as f:
             contents = list(f.read())
             segments.append(
-                Segment(offset=0, memory=MEMORY_SECTION_BOOT, data=contents))
+                Segment(offset=0, memory=find_memory_section(0), data=contents))
     else:
         raise Exception("Unsupported file format: %s" % (file_extension))
 
@@ -113,10 +107,8 @@ def read_file(filename: str) -> List[Segment]:
             drlo: int = record.address  # Data Record Load Offset
             if (expect_address != lba+drlo) or (segments.__len__() == 0):
                 expect_address = lba+drlo
-                section = find_memory_section(expect_address)
-                if section is not None:
-                    segments.append(Segment(
-                        offset=expect_address, memory=section, data=[]))
+                segments.append(Segment(
+                    offset=expect_address, memory=find_memory_section(expect_address), data=[]))
 
             for byte in record.data:
                 segments[-1].data.append(byte)
@@ -134,7 +126,7 @@ def read_file(filename: str) -> List[Segment]:
 def segment_to_pages(segment: Segment, page_size: int, pages: Dict[int, List[int]]):
     if segment.memory is None:
         return
-
+    
     internal_offset = segment.offset - segment.memory.offset
 
     for i, byte in enumerate(segment.data):
@@ -144,7 +136,7 @@ def segment_to_pages(segment: Segment, page_size: int, pages: Dict[int, List[int
 
         if (page_offset) not in pages.keys():
             pages[page_offset] = [0] * page_size
-
+        
         pages[page_offset][byte_offset - page_offset] = byte
 
 
@@ -153,22 +145,11 @@ def segments_to_pages(segments: List[Segment], page_size: int) -> Dict[int, List
 
     for segment in segments:
         segment_to_pages(segment, page_size, pages)
-
+    
     return pages
 
 
-def upload_file(
-    filename: str,
-    openocd_path: str,
-    scripts_path: str,
-    adapter_speed: str,
-    host: str = '127.0.0.1',
-    port: int = OpenOcdTclRpc.DEFAULT_PORT,
-    is_resume=True,
-    run_openocd=False,
-    use_quad_spi=False,
-    use_chip_erase=False,
-) -> int:
+def upload_file(filename: str, host: str = '127.0.0.1', port: int = OpenOcdTclRpc.DEFAULT_PORT, is_resume=True, run_openocd=False, use_quad_spi=False) -> int:
     """
     Write ihex or binary file into MIK32 EEPROM or external flash memory
 
@@ -184,7 +165,6 @@ def upload_file(
 
     result = 0
 
-    print(filename)
     if not os.path.exists(filename):
         print("ERROR: File %s does not exist" % filename)
         exit(1)
@@ -201,10 +181,10 @@ def upload_file(
             raise Exception("ERROR: segment with offset %s and length %s overflows section %s" % (
                 hex(segment.offset), segment.data.__len__(), segment.memory.type.name))
 
-    proc: Union[subprocess.Popen, None] = None
+    proc: subprocess.Popen | None = None
     if run_openocd:
-        cmd = shlex.split("%s -s %s -f interface/ftdi/m-link.cfg -f target/mik32.cfg" % (
-            openocd_path, scripts_path), posix=False)
+        cmd = shlex.split("%s -s %s -f interface/ftdi/m-link.cfg -f target/mcu32.cfg" % (
+            DEFAULT_OPENOCD_EXEC_FILE_PATH, DEFAULT_OPENOCD_SCRIPTS_PATH), posix=False)
         proc = subprocess.Popen(
             cmd, creationflags=subprocess.CREATE_NEW_CONSOLE | subprocess.SW_HIDE)
 
@@ -215,14 +195,12 @@ def upload_file(
             lambda segment: (segment.memory is not None) and (segment.memory.type == MemoryType.SPIFI), segments)), 256)
         segments_ram = list(filter(
             lambda segment: (segment.memory is not None) and (segment.memory.type == MemoryType.RAM), segments))
-
+        
         if (pages_eeprom.__len__() > 0):
-            result |= mik32_eeprom.write_pages(
-                pages_eeprom, openocd, is_resume)
+            result |= mik32_eeprom.write_pages(pages_eeprom, openocd, is_resume)
         if (pages_spifi.__len__() > 0):
             # print(pages_spifi)
-            result |= mik32_spifi.write_pages(
-                pages_spifi, openocd, is_resume, use_quad_spi, use_chip_erase)
+            result |= mik32_spifi.write_pages(pages_spifi, openocd, is_resume, use_quad_spi)
         if (segments_ram.__len__() > 0):
             mik32_ram.write_segments(segments_ram, openocd, is_resume)
             result |= 0
@@ -236,12 +214,6 @@ def upload_file(
 def createParser():
     parser = argparse.ArgumentParser()
     parser.add_argument('filepath', nargs='?')
-    parser.add_argument('--openocd-path', dest='openocd_path',
-                        default=DEFAULT_OPENOCD_EXEC_FILE_PATH)
-    parser.add_argument('--scripts-path', dest='scripts_path',
-                        default=DEFAULT_OPENOCD_SCRIPTS_PATH)
-    parser.add_argument('--adapter-speed', dest='adapter_speed',
-                        default=500)
     parser.add_argument('--run-openocd', dest='run_openocd',
                         action='store_true', default=False)
     parser.add_argument('--use-quad-spi', dest='use_quad_spi',
@@ -252,10 +224,6 @@ def createParser():
                         default=OpenOcdTclRpc.DEFAULT_PORT)
     parser.add_argument('--keep-halt', dest='keep_halt',
                         action='store_true', default=False)
-    parser.add_argument('-v', '--verbose', dest='is_verbose',
-                        action='store_true', default=False)
-    parser.add_argument('--use-chip-erase', dest='use_chip_erase',
-                        action='store_true', default=False)
     # parser.add_argument('-b', '--boot-mode', default='undefined')
 
     return parser
@@ -264,20 +232,9 @@ def createParser():
 if __name__ == '__main__':
     parser = createParser()
     namespace = parser.parse_args()
-    config.is_verbose = namespace.is_verbose
 
     if namespace.filepath:
-        upload_file(
-            namespace.filepath,
-            namespace.openocd_path,
-            namespace.scripts_path,
-            namespace.adapter_speed,
-            host=namespace.openocd_host,
-            port=namespace.openocd_port,
-            is_resume=(not namespace.keep_halt),
-            run_openocd=namespace.run_openocd,
-            use_quad_spi=namespace.use_quad_spi,
-            use_chip_erase=namespace.use_chip_erase,
-        )
+        upload_file(namespace.filepath, namespace.openocd_host,
+                    namespace.openocd_port, is_resume=(not namespace.keep_halt), run_openocd=namespace.run_openocd, use_quad_spi=namespace.use_quad_spi)
     else:
         print("Nothing to upload")
