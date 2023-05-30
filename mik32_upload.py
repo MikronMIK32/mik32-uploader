@@ -3,7 +3,7 @@ import argparse
 import subprocess
 import os
 from enum import Enum
-from typing import List, Dict, NamedTuple
+from typing import List, Dict, NamedTuple, Union
 from tclrpc import OpenOcdTclRpc
 import mik32_eeprom
 import mik32_spifi
@@ -29,6 +29,7 @@ supported_formats = [".hex"]
 
 is_verbose = False
 
+
 def test_connection():
     output = ""
     with OpenOcdTclRpc() as openocd:
@@ -52,8 +53,11 @@ class MemorySection(NamedTuple):
     length: int  # Memory section length in bytes
 
 
+MEMORY_SECTION_BOOT = MemorySection(MemoryType.BOOT, 0x0, 16 * 1024)
+
+
 mik32v0_sections: List[MemorySection] = [
-    MemorySection(MemoryType.BOOT, 0x0, 16 * 1024),
+    MEMORY_SECTION_BOOT,
     MemorySection(MemoryType.EEPROM, 0x01000000, 8 * 1024),
     MemorySection(MemoryType.RAM, 0x02000000, 16 * 1024),
     MemorySection(MemoryType.SPIFI, 0x80000000, 8 * 1024 * 1024),
@@ -76,7 +80,7 @@ def belongs_memory_section(memory_section: MemorySection, offset: int) -> bool:
     return True
 
 
-def find_memory_section(offset: int) -> MemorySection or None:
+def find_memory_section(offset: int) -> Union[MemorySection, None]:
     for section in mik32v0_sections:
         if belongs_memory_section(section, offset):
             return section
@@ -96,7 +100,7 @@ def read_file(filename: str) -> List[Segment]:
         with open(filename, "rb") as f:
             contents = list(f.read())
             segments.append(
-                Segment(offset=0, memory=find_memory_section(0), data=contents))
+                Segment(offset=0, memory=MEMORY_SECTION_BOOT, data=contents))
     else:
         raise Exception("Unsupported file format: %s" % (file_extension))
 
@@ -109,8 +113,10 @@ def read_file(filename: str) -> List[Segment]:
             drlo: int = record.address  # Data Record Load Offset
             if (expect_address != lba+drlo) or (segments.__len__() == 0):
                 expect_address = lba+drlo
-                segments.append(Segment(
-                    offset=expect_address, memory=find_memory_section(expect_address), data=[]))
+                section = find_memory_section(expect_address)
+                if section is not None:
+                    segments.append(Segment(
+                        offset=expect_address, memory=section, data=[]))
 
             for byte in record.data:
                 segments[-1].data.append(byte)
@@ -194,7 +200,7 @@ def upload_file(
             raise Exception("ERROR: segment with offset %s and length %s overflows section %s" % (
                 hex(segment.offset), segment.data.__len__(), segment.memory.type.name))
 
-    proc: subprocess.Popen or None = None
+    proc: Union[subprocess.Popen, None] = None
     if run_openocd:
         cmd = shlex.split("%s -s %s -f interface/ftdi/m-link.cfg -f target/mik32.cfg" % (
             openocd_path, scripts_path), posix=False)
