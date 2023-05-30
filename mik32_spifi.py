@@ -285,7 +285,7 @@ def spifi_wait_busy(openocd: OpenOcdTclRpc):
 
 def spifi_chip_erase(openocd: OpenOcdTclRpc):
     print("Chip erase...")
-    # spifi_intrq_clear(openocd)
+    spifi_intrq_clear(openocd)
     openocd.write_word(SPIFI_CONFIG_STAT, openocd.read_word(
         SPIFI_CONFIG_STAT) | SPIFI_CONFIG_STAT_INTRQ_M)
     openocd.write_word(SPIFI_CONFIG_CMD, (SECTOR_ERASE_COMMAND << SPIFI_CONFIG_CMD_OPCODE_S) |
@@ -298,6 +298,8 @@ def spifi_sector_erase(openocd: OpenOcdTclRpc, address: int):
     print("Erase sector %s..." % hex(address))
     openocd.write_word(SPIFI_CONFIG_ADDR, address)
     # spifi_intrq_clear(openocd)
+    openocd.write_word(SPIFI_CONFIG_STAT, openocd.read_word(
+        SPIFI_CONFIG_STAT) | SPIFI_CONFIG_STAT_INTRQ_M)
     openocd.write_word(SPIFI_CONFIG_STAT, openocd.read_word(
         SPIFI_CONFIG_STAT) | SPIFI_CONFIG_STAT_INTRQ_M)
     openocd.write_word(SPIFI_CONFIG_CMD, (CHIP_ERASE_COMMAND << SPIFI_CONFIG_CMD_OPCODE_S) |
