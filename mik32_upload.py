@@ -3,7 +3,7 @@ import argparse
 import subprocess
 import os
 from enum import Enum
-from typing import List, Dict, NamedTuple
+from typing import List, Dict, NamedTuple, Union
 from tclrpc import OpenOcdTclRpc
 import mik32_eeprom
 import mik32_spifi
@@ -20,9 +20,10 @@ from mik32_parsers import *
 #     UNDERLINE = '\033[4m'
 
 
-DEFAULT_OPENOCD_EXEC_FILE_PATH = os.path.join("openocd", "bin", "openocd.exe")
-DEFAULT_OPENOCD_SCRIPTS_PATH = os.path.join(
-    "openocd", "share", "openocd", "scripts")
+openocd_exec_path = os.path.join("openocd", "bin", "openocd.exe")
+openocd_scripts_path = os.path.join("openocd", "share", "openocd", "scripts")
+openocd_interface_path = os.path.join("interface", "ftdi", "m-link.cfg")
+openocd_target_path = os.path.join("target", "mik32.cfg")
 
 supported_formats = [".hex"]
 
@@ -30,7 +31,7 @@ supported_formats = [".hex"]
 def test_connection():
     output = ""
     with OpenOcdTclRpc() as openocd:
-        output = openocd.run(f"capture \"reg\"")
+        output = openocd.run("capture \"reg\"")
 
     if output == "":
         raise Exception("ERROR: no regs found, check MCU connection")
@@ -61,7 +62,7 @@ mik32v0_sections: List[MemorySection] = [
 @dataclass
 class Segment:
     offset: int
-    memory: MemorySection | None
+    memory: Union[MemorySection, None]
     data: List[int]
 
 
@@ -74,7 +75,7 @@ def belongs_memory_section(memory_section: MemorySection, offset: int) -> bool:
     return True
 
 
-def find_memory_section(offset: int) -> MemorySection | None:
+def find_memory_section(offset: int) -> Union[MemorySection, None]:
     for section in mik32v0_sections:
         if belongs_memory_section(section, offset):
             return section
@@ -96,7 +97,7 @@ def read_file(filename: str) -> List[Segment]:
             segments.append(
                 Segment(offset=0, memory=find_memory_section(0), data=contents))
     else:
-        raise Exception("Unsupported file format: %s" % (file_extension))
+        raise Exception(f"Unsupported file format: {file_extension}")
 
     lba: int = 0        # Linear Base Address
     expect_address = 0  # Address of the next byte
@@ -126,7 +127,7 @@ def read_file(filename: str) -> List[Segment]:
 def segment_to_pages(segment: Segment, page_size: int, pages: Dict[int, List[int]]):
     if segment.memory is None:
         return
-    
+
     internal_offset = segment.offset - segment.memory.offset
 
     for i, byte in enumerate(segment.data):
@@ -136,7 +137,7 @@ def segment_to_pages(segment: Segment, page_size: int, pages: Dict[int, List[int
 
         if (page_offset) not in pages.keys():
             pages[page_offset] = [0] * page_size
-        
+
         pages[page_offset][byte_offset - page_offset] = byte
 
 
@@ -145,11 +146,18 @@ def segments_to_pages(segments: List[Segment], page_size: int) -> Dict[int, List
 
     for segment in segments:
         segment_to_pages(segment, page_size, pages)
-    
+
     return pages
 
 
-def upload_file(filename: str, host: str = '127.0.0.1', port: int = OpenOcdTclRpc.DEFAULT_PORT, is_resume=True, run_openocd=False, use_quad_spi=False) -> int:
+def upload_file(
+        filename: str,
+        host: str = '127.0.0.1',
+        port: int = OpenOcdTclRpc.DEFAULT_PORT,
+        is_resume=True,
+        run_openocd=False,
+        use_quad_spi=False
+) -> int:
     """
     Write ihex or binary file into MIK32 EEPROM or external flash memory
 
@@ -166,7 +174,7 @@ def upload_file(filename: str, host: str = '127.0.0.1', port: int = OpenOcdTclRp
     result = 0
 
     if not os.path.exists(filename):
-        print("ERROR: File %s does not exist" % filename)
+        print(f"ERROR: File {filename} does not exist")
         exit(1)
 
     segments: List[Segment] = read_file(filename)
@@ -175,32 +183,39 @@ def upload_file(filename: str, host: str = '127.0.0.1', port: int = OpenOcdTclRp
     for segment in segments:
         if segment.memory is None:
             raise Exception(
-                "ERROR: segment with offset %s doesn't belong to any section" % hex(segment.offset))
+                f"ERROR: segment with offset {segment.offset:#0x} doesn't belong to any section")
 
         if (segment.offset + segment.data.__len__()) > (segment.memory.offset + segment.memory.length):
-            raise Exception("ERROR: segment with offset %s and length %s overflows section %s" % (
-                hex(segment.offset), segment.data.__len__(), segment.memory.type.name))
+            raise Exception(
+                f"ERROR: segment with offset {segment.offset:#0x} "
+                f"and length {segment.data.__len__()} "
+                f"overflows section {segment.memory.type.name}"
+            )
 
-    proc: subprocess.Popen | None = None
+    proc: Union[subprocess.Popen, None] = None
     if run_openocd:
-        cmd = shlex.split("%s -s %s -f interface/ftdi/m-link.cfg -f target/mcu32.cfg" % (
-            DEFAULT_OPENOCD_EXEC_FILE_PATH, DEFAULT_OPENOCD_SCRIPTS_PATH), posix=False)
+        cmd = shlex.split(
+            f"{openocd_exec_path} -s {openocd_scripts_path} "
+            f"-f {openocd_interface_path} -f {openocd_target_path}", posix=False
+        )
         proc = subprocess.Popen(
             cmd, creationflags=subprocess.CREATE_NEW_CONSOLE | subprocess.SW_HIDE)
 
-    with OpenOcdTclRpc() as openocd:
+    with OpenOcdTclRpc(host, port) as openocd:
         pages_eeprom = segments_to_pages(list(filter(
             lambda segment: (segment.memory is not None) and (segment.memory.type == MemoryType.EEPROM), segments)), 128)
         pages_spifi = segments_to_pages(list(filter(
             lambda segment: (segment.memory is not None) and (segment.memory.type == MemoryType.SPIFI), segments)), 256)
         segments_ram = list(filter(
             lambda segment: (segment.memory is not None) and (segment.memory.type == MemoryType.RAM), segments))
-        
+
         if (pages_eeprom.__len__() > 0):
-            result |= mik32_eeprom.write_pages(pages_eeprom, openocd, is_resume)
+            result |= mik32_eeprom.write_pages(
+                pages_eeprom, openocd, is_resume)
         if (pages_spifi.__len__() > 0):
             # print(pages_spifi)
-            result |= mik32_spifi.write_pages(pages_spifi, openocd, is_resume, use_quad_spi)
+            result |= mik32_spifi.write_pages(
+                pages_spifi, openocd, is_resume, use_quad_spi)
         if (segments_ram.__len__() > 0):
             mik32_ram.write_segments(segments_ram, openocd, is_resume)
             result |= 0
@@ -234,7 +249,13 @@ if __name__ == '__main__':
     namespace = parser.parse_args()
 
     if namespace.filepath:
-        upload_file(namespace.filepath, namespace.openocd_host,
-                    namespace.openocd_port, is_resume=(not namespace.keep_halt), run_openocd=namespace.run_openocd, use_quad_spi=namespace.use_quad_spi)
+        upload_file(
+            namespace.filepath,
+            namespace.openocd_host,
+            namespace.openocd_port,
+            is_resume=(not namespace.keep_halt),
+            run_openocd=namespace.run_openocd,
+            use_quad_spi=namespace.use_quad_spi
+        )
     else:
         print("Nothing to upload")

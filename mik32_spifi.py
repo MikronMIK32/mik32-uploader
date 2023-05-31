@@ -332,6 +332,7 @@ def spifi_read_data(openocd: OpenOcdTclRpc, address: int, byte_count: int, bin_d
 
 
 def spifi_page_program(openocd: OpenOcdTclRpc, ByteAddress: int, data: List[int], byte_count: int):
+    print(f"Writing page {ByteAddress:#010x}...")
     if byte_count > 256:
         raise Exception("Byte count more than 256")
 
@@ -416,6 +417,7 @@ def spifi_write_file(bytes: List[int], openocd: OpenOcdTclRpc, is_resume=True):
 
 
 def spifi_quad_page_program(openocd: OpenOcdTclRpc, ByteAddress: int, data: List[int], byte_count: int):
+    print(f"Writing page {ByteAddress:#010x}...")
     if byte_count > 256:
         raise Exception("Byte count more than 256")
 
@@ -494,7 +496,6 @@ def write_pages(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc, is_resume=T
     spifi_quad_enable(openocd)
 
     for page_offset in list(pages):
-        print("Writing page %s..." % hex(page_offset))
         page_bytes = pages[page_offset]
 
         spifi_write_enable(openocd)

@@ -140,6 +140,7 @@ def eeprom_write_word(openocd: OpenOcdTclRpc, address:int, word:int):
     time.sleep(0.001)
 
 def eeprom_write_page(openocd: OpenOcdTclRpc, address:int, data:List[int]):
+    print(f"Writing page {address:#06x}...")
     openocd.write_word(EEPROM_REGS_EECON, 1 << EEPROM_BWE_S)
     openocd.write_word(EEPROM_REGS_EEA, address)
     page_address = address & EEPROM_PAGE_MASK
@@ -279,7 +280,6 @@ def write_pages(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc, read_throug
     print("EEPROM writing...")
 
     for page_offset in list(pages):
-        print("Writing page %s..." % hex(page_offset))
         page_words = bytes2words(pages[page_offset])
         eeprom_write_page(openocd, page_offset, page_words)
         if read_through_apb:
