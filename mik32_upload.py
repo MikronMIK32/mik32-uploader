@@ -156,7 +156,11 @@ def upload_file(
         port: int = OpenOcdTclRpc.DEFAULT_PORT,
         is_resume=True,
         run_openocd=False,
-        use_quad_spi=False
+        use_quad_spi=False,
+        openocd_exec=openocd_exec_path,
+        openocd_scripts=openocd_scripts_path,
+        openocd_interface=openocd_interface_path,
+        openocd_target=openocd_target_path,
 ) -> int:
     """
     Write ihex or binary file into MIK32 EEPROM or external flash memory
@@ -195,8 +199,8 @@ def upload_file(
     proc: Union[subprocess.Popen, None] = None
     if run_openocd:
         cmd = shlex.split(
-            f"{openocd_exec_path} -s {openocd_scripts_path} "
-            f"-f {openocd_interface_path} -f {openocd_target_path}", posix=False
+            f"{openocd_exec} -s {openocd_scripts} "
+            f"-f {openocd_interface} -f {openocd_target}", posix=False
         )
         proc = subprocess.Popen(
             cmd, creationflags=subprocess.CREATE_NEW_CONSOLE | subprocess.SW_HIDE)
@@ -239,6 +243,14 @@ def createParser():
                         default=OpenOcdTclRpc.DEFAULT_PORT)
     parser.add_argument('--keep-halt', dest='keep_halt',
                         action='store_true', default=False)
+    parser.add_argument(
+        '--openocd-exec', dest='openocd_exec', default=openocd_exec_path)
+    parser.add_argument(
+        '--openocd-scripts', dest='openocd_scripts', default=openocd_scripts_path)
+    parser.add_argument(
+        '--openocd-interface', dest='openocd_interface', default=openocd_interface_path)
+    parser.add_argument(
+        '--openocd-target', dest='openocd_target', default=openocd_target_path)
     # parser.add_argument('-b', '--boot-mode', default='undefined')
 
     return parser
@@ -251,11 +263,15 @@ if __name__ == '__main__':
     if namespace.filepath:
         upload_file(
             namespace.filepath,
-            namespace.openocd_host,
-            namespace.openocd_port,
+            host=namespace.openocd_host,
+            port=namespace.openocd_port,
             is_resume=(not namespace.keep_halt),
             run_openocd=namespace.run_openocd,
-            use_quad_spi=namespace.use_quad_spi
+            use_quad_spi=namespace.use_quad_spi,
+            openocd_exec=namespace.openocd_exec,
+            openocd_scripts=namespace.openocd_scripts,
+            openocd_interface=namespace.openocd_interface,
+            openocd_target=namespace.openocd_target,
         )
     else:
         print("Nothing to upload")
