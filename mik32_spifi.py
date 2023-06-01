@@ -486,12 +486,15 @@ def get_segments_list(pages_offsets: List[int], segment_size: int) -> List[int]:
     return list(segments)
 
 
-def write_pages(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc, is_resume=True, use_quad_spi=False):
+def write_pages(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc, is_resume=True, use_quad_spi=False, use_chip_erase=False):
     result = 0
     
     openocd.halt()
     spifi_init(openocd)
-    spifi_erase(openocd, EraseType.CHIP_ERASE, get_segments_list(list(pages), 4*1024))
+    if use_chip_erase:
+        spifi_erase(openocd, EraseType.CHIP_ERASE)
+    else:
+        spifi_erase(openocd, EraseType.SECTOR_ERASE, get_segments_list(list(pages), 4*1024))
     address = 0
 
     spifi_quad_disable(openocd)
