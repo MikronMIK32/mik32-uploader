@@ -231,8 +231,8 @@ def spifi_init(openocd: OpenOcdTclRpc):
     openocd.write_word(SPIFI_CONFIG_STAT, openocd.read_word(SPIFI_CONFIG_STAT) |
                        SPIFI_CONFIG_STAT_INTRQ_M |
                        SPIFI_CONFIG_STAT_RESET_M)
-    openocd.write_word(SPIFI_CONFIG_CTRL, openocd.read_word(
-        SPIFI_CONFIG_CTRL) | (7 << SPIFI_CONFIG_CTRL_SCK_DIV_S))
+    # openocd.write_word(SPIFI_CONFIG_CTRL, openocd.read_word(
+    #     SPIFI_CONFIG_CTRL) | (7 << SPIFI_CONFIG_CTRL_SCK_DIV_S))
     openocd.write_word(SPIFI_CONFIG_ADDR, 0x00)
     openocd.write_word(SPIFI_CONFIG_IDATA, 0x00)
     openocd.write_word(SPIFI_CONFIG_CLIMIT, 0x00)
