@@ -219,7 +219,7 @@ def upload_file(
         if (pages_spifi.__len__() > 0):
             # print(pages_spifi)
             result |= mik32_spifi.write_pages(
-                pages_spifi, openocd, is_resume, use_quad_spi)
+                pages_spifi, openocd, is_resume=is_resume, use_quad_spi=use_quad_spi)
         if (segments_ram.__len__() > 0):
             mik32_ram.write_segments(segments_ram, openocd, is_resume)
             result |= 0
