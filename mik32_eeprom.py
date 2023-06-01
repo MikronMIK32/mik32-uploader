@@ -19,7 +19,7 @@ PM_Clk_APB_P_Set_OFFSET = 0x1C
 PM_CLOCK_CPU_S = 0
 PM_CLOCK_CPU_M = (1 << PM_CLOCK_CPU_S)
 PM_CLOCK_EEPROM_S = 1
-PM_CLOCK_EEPROM_M  = (1 << PM_CLOCK_EEPROM_S)
+PM_CLOCK_EEPROM_M = (1 << PM_CLOCK_EEPROM_S)
 PM_CLOCK_RAM_S = 2
 PM_CLOCK_RAM_M = (1 << PM_CLOCK_RAM_S)
 PM_CLOCK_SPIFI_S = 3
@@ -89,8 +89,9 @@ EEPROM_BEH_GLOB = 3
 
 EEPROM_PAGE_MASK = 0x1F80
 
+
 def eeprom_sysinit(openocd: OpenOcdTclRpc):
-    print("MCU clock init...")
+    print("MCU clock init...", flush=True)
 
     openocd.write_word(WU_BASE_ADDRESS + WU_Clocks_OFFSET, 0x202)
     openocd.write_word(PM_BASE_ADDRESS + PM_Clk_APB_P_Set_OFFSET, 0xffffffff)
@@ -99,7 +100,7 @@ def eeprom_sysinit(openocd: OpenOcdTclRpc):
 
 
 def eeprom_global_erase(openocd: OpenOcdTclRpc):
-    print("EEPROM global erase...")
+    print("EEPROM global erase...", flush=True)
     with OpenOcdTclRpc() as openocd:
         openocd.write_word(EEPROM_REGS_NCYCRL, 1 << EEPROM_N_LD_S |
                            3 << EEPROM_N_R_1_S | 1 << EEPROM_N_R_2_S)
@@ -118,9 +119,10 @@ def eeprom_global_erase(openocd: OpenOcdTclRpc):
             (EEPROM_OP_ER << EEPROM_OP_S) | (EEPROM_BEH_GLOB << EEPROM_WRBEH_S)
         ))
 
+
 def eeprom_global_erase_check(openocd: OpenOcdTclRpc):
-    print("EEPROM global erase check through APB...")
-    print("  Read Data at ...")
+    print("EEPROM global erase check through APB...", flush=True)
+    print("  Read Data at ...", flush=True)
     ex_value = 0x00000000
     openocd.write_word(EEPROM_REGS_EEA, 0x00000000)
     for i in range(0, 64):
@@ -128,19 +130,22 @@ def eeprom_global_erase_check(openocd: OpenOcdTclRpc):
         for j in range(0, 32):
             value = openocd.read_memory(EEPROM_REGS_EEDAT, 32, 1)[0]
             if ex_value != value:
-                print(f"Unexpect value at Row {i}, Word {j}, expect {ex_value:#0x}, {value:#0x}")
+                print(
+                    f"Unexpect value at Row {i}, Word {j}, expect {ex_value:#0x}, {value:#0x}", flush=True)
 
 
-def eeprom_write_word(openocd: OpenOcdTclRpc, address:int, word:int):
+def eeprom_write_word(openocd: OpenOcdTclRpc, address: int, word: int):
     openocd.write_word(EEPROM_REGS_EECON, 1 << EEPROM_BWE_S)
     openocd.write_word(EEPROM_REGS_EEA, address)
     # buffer load
     openocd.write_word(EEPROM_REGS_EEDAT, word)
-    openocd.write_word(EEPROM_REGS_EECON, (1 << EEPROM_EX_S) | (1 << EEPROM_BWE_S) | (EEPROM_OP_PR << EEPROM_OP_S))
+    openocd.write_word(EEPROM_REGS_EECON, (1 << EEPROM_EX_S) | (
+        1 << EEPROM_BWE_S) | (EEPROM_OP_PR << EEPROM_OP_S))
     time.sleep(0.001)
 
-def eeprom_write_page(openocd: OpenOcdTclRpc, address:int, data:List[int]):
-    print(f"Writing page {address:#06x}...")
+
+def eeprom_write_page(openocd: OpenOcdTclRpc, address: int, data: List[int], progress: str = ""):
+    print(f"Writing page {address:#06x}... {progress}", flush=True)
     openocd.write_word(EEPROM_REGS_EECON, 1 << EEPROM_BWE_S)
     openocd.write_word(EEPROM_REGS_EEA, address)
     page_address = address & EEPROM_PAGE_MASK
@@ -148,23 +153,26 @@ def eeprom_write_page(openocd: OpenOcdTclRpc, address:int, data:List[int]):
     # buffer load
     for word in data:
         if ((address + n) & EEPROM_PAGE_MASK) != page_address:
-            raise Exception("ERROR: word outside page!")
+            raise Exception("ERROR: word outside page!", flush=True)
         openocd.write_word(EEPROM_REGS_EEDAT, word)
-    openocd.write_word(EEPROM_REGS_EECON, (1 << EEPROM_EX_S) | (1 << EEPROM_BWE_S) | (EEPROM_OP_PR << EEPROM_OP_S))
+    openocd.write_word(EEPROM_REGS_EECON, (1 << EEPROM_EX_S) | (
+        1 << EEPROM_BWE_S) | (EEPROM_OP_PR << EEPROM_OP_S))
     time.sleep(0.001)
+
 
 def eeprom_check_data_apb(openocd: OpenOcdTclRpc, words: List[int], offset: int, print_progress=True) -> int:
     if print_progress:
-        print("EEPROM check through APB...")
+        print("EEPROM check through APB...", flush=True)
     openocd.write_word(EEPROM_REGS_EEA, offset)
     word_num = 0
     progress = 0
     if print_progress:
         print("[", end="", flush=True)
     for word in words:
-        value:int = openocd.read_word(EEPROM_REGS_EEDAT)
+        value: int = openocd.read_word(EEPROM_REGS_EEDAT)
         if words[word_num] != value:
-            print(f"Unexpect value at {word_num} word, expect {word:#0x}, get {value:#0x}")
+            print(
+                f"Unexpect value at {word_num} word, expect {word:#0x}, get {value:#0x}", flush=True)
             return 1
         word_num += 1
         curr_progress = int((word_num * 50) / len(words))
@@ -172,35 +180,37 @@ def eeprom_check_data_apb(openocd: OpenOcdTclRpc, words: List[int], offset: int,
             print("#"*(curr_progress - progress), end="", flush=True)
             progress = curr_progress
     if print_progress:
-        print("]")
-        print("EEPROM check through APB done!")
+        print("]", flush=True)
+        print("EEPROM check through APB done!", flush=True)
     return 0
+
 
 def eeprom_check_data_ahb_lite(openocd: OpenOcdTclRpc, words: List[int], offset: int, print_progress=True) -> int:
     if print_progress:
-        print("EEPROM check through AHB-Lite...")
+        print("EEPROM check through AHB-Lite...", flush=True)
     mem_array = openocd.read_memory(0x01000000 + offset, 32, len(words))
     if len(words) != len(mem_array):
-        raise Exception("Wrong number of words in read_memory output!")
+        raise Exception(
+            "Wrong number of words in read_memory output!", flush=True)
     progress = 0
     if print_progress:
         print("[", end="", flush=True)
     for word_num in range(len(words)):
         if words[word_num] != mem_array[word_num]:
-            print(f"Unexpect value at {word_num} word, expect {words[word_num]:#0x}, \
-            get {mem_array[word_num]:#0x}")
+            print(f"Unexpect value at {word_num} word, expect {words[word_num]:#0x}, "
+                  f"get {mem_array[word_num]:#0x}", flush=True)
             return 1
         curr_progress = int((word_num * 50) / len(words))
         if print_progress and (curr_progress > progress):
             print("#"*(curr_progress - progress), end="", flush=True)
             progress = curr_progress
     if print_progress:
-        print("]")
-        print("EEPROM check through APB done!")
+        print("]", flush=True)
+        print("EEPROM check through APB done!", flush=True)
     return 0
 
 
-def write_words(words: List[int], openocd: OpenOcdTclRpc, write_by_word = False, read_through_apb = False, is_resume=True) -> int:
+def write_words(words: List[int], openocd: OpenOcdTclRpc, write_by_word=False, read_through_apb=False, is_resume=True) -> int:
     """
     Write words in MIK32 EEPROM through APB bus
 
@@ -213,19 +223,20 @@ def write_words(words: List[int], openocd: OpenOcdTclRpc, write_by_word = False,
 
     @return: return 0 if successful, 1 if failed
     """
-    print(f"Write {len(words*4)} bytes")
+    print(f"Write {len(words*4)} bytes", flush=True)
 
     openocd.halt()
     eeprom_sysinit(openocd)
     eeprom_global_erase(openocd)
     # eeprom_global_erase_check(openocd)
-    openocd.write_word(EEPROM_REGS_NCYCRL, 1<<EEPROM_N_LD_S  | 3<<EEPROM_N_R_1_S | 1<<EEPROM_N_R_2_S)
+    openocd.write_word(EEPROM_REGS_NCYCRL, 1 << EEPROM_N_LD_S |
+                       3 << EEPROM_N_R_1_S | 1 << EEPROM_N_R_2_S)
     openocd.write_word(EEPROM_REGS_NCYCEP1, 100000)
     openocd.write_word(EEPROM_REGS_NCYCEP2, 1000)
     time.sleep(0.1)
-    word_num:int = 0
-    progress:int = 0
-    print("EEPROM writing...")
+    word_num: int = 0
+    progress: int = 0
+    print("EEPROM writing...", flush=True)
     print("[", end="", flush=True)
     if write_by_word:
         for word in words:
@@ -253,47 +264,53 @@ def write_words(words: List[int], openocd: OpenOcdTclRpc, write_by_word = False,
                 print("#"*(curr_progress - progress), end="", flush=True)
                 progress = curr_progress
         eeprom_write_page(openocd, page_num*page_size*4, page)
-    print("]")
+    print("]", flush=True)
     if read_through_apb:
         result = eeprom_check_data_apb(openocd, words, 0)
     else:
         result = eeprom_check_data_ahb_lite(openocd, words, 0)
     if is_resume:
         openocd.resume(0)
-    
+
     if result == 0:
-        print("EEPROM write file done!")
+        print("EEPROM write file done!", flush=True)
     return result
 
 
-def write_pages(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc, read_through_apb = False, is_resume=True) -> int:
+def write_pages(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc, read_through_apb=False, is_resume=True) -> int:
     result = 0
 
     openocd.halt()
     eeprom_sysinit(openocd)
     eeprom_global_erase(openocd)
     # eeprom_global_erase_check(openocd)
-    openocd.write_word(EEPROM_REGS_NCYCRL, 1<<EEPROM_N_LD_S  | 3<<EEPROM_N_R_1_S | 1<<EEPROM_N_R_2_S)
+    openocd.write_word(EEPROM_REGS_NCYCRL, 1 << EEPROM_N_LD_S |
+                       3 << EEPROM_N_R_1_S | 1 << EEPROM_N_R_2_S)
     openocd.write_word(EEPROM_REGS_NCYCEP1, 100000)
     openocd.write_word(EEPROM_REGS_NCYCEP2, 1000)
     time.sleep(0.1)
-    print("EEPROM writing...")
+    print("EEPROM writing...", flush=True)
 
-    for page_offset in list(pages):
+    pages_offsets = list(pages)
+
+    for index, page_offset in enumerate(pages_offsets):
         page_words = bytes2words(pages[page_offset])
-        eeprom_write_page(openocd, page_offset, page_words)
+        eeprom_write_page(openocd, page_offset, page_words,
+                          f"{(index*100)//pages_offsets.__len__()}%")
         if read_through_apb:
-            result = eeprom_check_data_apb(openocd, page_words, page_offset, False)
+            result = eeprom_check_data_apb(
+                openocd, page_words, page_offset, False)
         else:
-            result = eeprom_check_data_ahb_lite(openocd, page_words, page_offset, False)
-        
+            result = eeprom_check_data_ahb_lite(
+                openocd, page_words, page_offset, False)
+
         if result == 1:
-            print("Page mismatch!")
+            print("Page mismatch!", flush=True)
             return result
 
     if is_resume:
         openocd.resume(0)
 
     if result == 0:
-        print("EEPROM write file done!")
+        print("EEPROM page recording completed", flush=True)
     return result

@@ -221,7 +221,7 @@ def spifi_intrq_clear(openocd: OpenOcdTclRpc):
 
 
 def spifi_init(openocd: OpenOcdTclRpc):
-    print("MCU clock init")
+    print("MCU clock init", flush=True)
 
     openocd.write_word(WU_BASE_ADDRESS + WU_Clocks_OFFSET, 0x202)
     openocd.write_word(PM_BASE_ADDRESS + PM_Clk_APB_P_Set_OFFSET, 0xffffffff)
@@ -231,7 +231,8 @@ def spifi_init(openocd: OpenOcdTclRpc):
     openocd.write_word(SPIFI_CONFIG_STAT, openocd.read_word(SPIFI_CONFIG_STAT) |
                        SPIFI_CONFIG_STAT_INTRQ_M |
                        SPIFI_CONFIG_STAT_RESET_M)
-    openocd.write_word(SPIFI_CONFIG_CTRL, openocd.read_word(SPIFI_CONFIG_CTRL) | (7 << SPIFI_CONFIG_CTRL_SCK_DIV_S))
+    openocd.write_word(SPIFI_CONFIG_CTRL, openocd.read_word(
+        SPIFI_CONFIG_CTRL) | (7 << SPIFI_CONFIG_CTRL_SCK_DIV_S))
     openocd.write_word(SPIFI_CONFIG_ADDR, 0x00)
     openocd.write_word(SPIFI_CONFIG_IDATA, 0x00)
     openocd.write_word(SPIFI_CONFIG_CLIMIT, 0x00)
@@ -285,7 +286,7 @@ def spifi_wait_busy(openocd: OpenOcdTclRpc):
 
 
 def spifi_chip_erase(openocd: OpenOcdTclRpc):
-    print("Chip erase...")
+    print("Chip erase...", flush=True)
     # spifi_intrq_clear(openocd)
     openocd.write_word(SPIFI_CONFIG_STAT, openocd.read_word(
         SPIFI_CONFIG_STAT) | SPIFI_CONFIG_STAT_INTRQ_M)
@@ -296,7 +297,7 @@ def spifi_chip_erase(openocd: OpenOcdTclRpc):
 
 
 def spifi_sector_erase(openocd: OpenOcdTclRpc, address: int):
-    print("Erase sector %s..." % hex(address))
+    print("Erase sector %s..." % hex(address), flush=True)
     openocd.write_word(SPIFI_CONFIG_ADDR, address)
 
     spifi_intrq_clear(openocd)
@@ -326,14 +327,15 @@ def spifi_read_data(openocd: OpenOcdTclRpc, address: int, byte_count: int, bin_d
 
     for i in range(byte_count):
         if read_data[i] != bin_data[i]:
-            print(f"DATA[{i+address}] = {read_data[i]:#0x} - ошибка")
+            print(
+                f"DATA[{i+address}] = {read_data[i]:#0x} - ошибка", flush=True)
             return 1
-    
+
     return 0
 
 
-def spifi_page_program(openocd: OpenOcdTclRpc, ByteAddress: int, data: List[int], byte_count: int):
-    print(f"Writing page {ByteAddress:#010x}...")
+def spifi_page_program(openocd: OpenOcdTclRpc, ByteAddress: int, data: List[int], byte_count: int, progress: str = ""):
+    print(f"Writing page {ByteAddress:#010x}... {progress}", flush=True)
     if byte_count > 256:
         raise Exception("Byte count more than 256")
 
@@ -389,7 +391,7 @@ def spifi_write(openocd: OpenOcdTclRpc, address: int, data: List[int], data_len:
 def spifi_write_file(bytes: List[int], openocd: OpenOcdTclRpc, is_resume=True):
     # print(bytes)
     print(f"Write {len(bytes)} bytes")
-    
+
     openocd.halt()
     spifi_init(openocd)
     spifi_erase(openocd)
@@ -413,12 +415,12 @@ def spifi_write_file(bytes: List[int], openocd: OpenOcdTclRpc, is_resume=True):
     print("end")
     if is_resume:
         openocd.resume(0)
-    
+
     return 0
 
 
-def spifi_quad_page_program(openocd: OpenOcdTclRpc, ByteAddress: int, data: List[int], byte_count: int):
-    print(f"Writing page {ByteAddress:#010x}...")
+def spifi_quad_page_program(openocd: OpenOcdTclRpc, ByteAddress: int, data: List[int], byte_count: int, progress: str = ""):
+    print(f"Writing page {ByteAddress:#010x}... {progress}", flush=True)
     if byte_count > 256:
         raise Exception("Byte count more than 256")
 
@@ -474,7 +476,8 @@ def spifi_quad_disable(openocd):
                        (1 << SPIFI_CONFIG_CMD_DOUT_S) |
                        (0 << SPIFI_CONFIG_CMD_POLL_S) |
                        (1 << SPIFI_CONFIG_CMD_DATALEN_S))
-    openocd.write_memory(SPIFI_CONFIG_DATA32, 8, [sreg2 & (~SREG2_QUAD_ENABLE_M)])
+    openocd.write_memory(SPIFI_CONFIG_DATA32, 8, [
+                         sreg2 & (~SREG2_QUAD_ENABLE_M)])
 
     spifi_wait_busy(openocd)
 
@@ -488,30 +491,35 @@ def get_segments_list(pages_offsets: List[int], segment_size: int) -> List[int]:
 
 def write_pages(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc, is_resume=True, use_quad_spi=False, use_chip_erase=False):
     result = 0
-    
+
     openocd.halt()
     spifi_init(openocd)
     if use_chip_erase:
         spifi_erase(openocd, EraseType.CHIP_ERASE)
     else:
-        spifi_erase(openocd, EraseType.SECTOR_ERASE, get_segments_list(list(pages), 4*1024))
+        spifi_erase(openocd, EraseType.SECTOR_ERASE,
+                    get_segments_list(list(pages), 4*1024))
     address = 0
 
     spifi_quad_disable(openocd)
     # spifi_quad_enable(openocd)
 
-    for page_offset in list(pages):
+    pages_offsets = list(pages)
+
+    for index, page_offset in enumerate(pages_offsets):
         page_bytes = pages[page_offset]
 
         spifi_write_enable(openocd)
         if (use_quad_spi):
-            spifi_quad_page_program(openocd, page_offset, page_bytes, 256)
+            spifi_quad_page_program(
+                openocd, page_offset, page_bytes, 256, f"{(index*100)//pages_offsets.__len__()}%")
         else:
-            spifi_page_program(openocd, page_offset, page_bytes, 256)
+            spifi_page_program(openocd, page_offset, page_bytes,
+                               256, f"{(index*100)//pages_offsets.__len__()}%")
         spifi_wait_busy(openocd)
 
         result = spifi_read_data(openocd, page_offset, 256, page_bytes)
-        
+
         if result == 1:
             print("Data error")
             return result
@@ -520,5 +528,5 @@ def write_pages(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc, is_resume=T
 
     if is_resume:
         openocd.resume(0)
-    
+
     return 0
