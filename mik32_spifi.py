@@ -529,4 +529,6 @@ def write_pages(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc, is_resume=T
     if is_resume:
         openocd.resume(0)
 
+    if result == 0:
+        print("SPIFI page recording completed", flush=True)
     return 0
