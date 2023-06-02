@@ -205,10 +205,10 @@ def upload_file(
             f"{openocd_exec} -s {openocd_scripts} "
             f"-f {openocd_interface} -f {openocd_target}", posix=False
         )
-        # proc = subprocess.Popen(
-        #     cmd, creationflags=subprocess.CREATE_NEW_CONSOLE | subprocess.SW_HIDE)
         proc = subprocess.Popen(
-            cmd, creationflags= subprocess.SW_HIDE)
+            cmd, creationflags=subprocess.CREATE_NEW_CONSOLE | subprocess.SW_HIDE)
+        # proc = subprocess.Popen(
+        #     cmd, creationflags= subprocess.SW_HIDE)
 
     with OpenOcdTclRpc(host, port) as openocd:
         pages_eeprom = segments_to_pages(list(filter(
