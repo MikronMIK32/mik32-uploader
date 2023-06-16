@@ -27,7 +27,7 @@ openocd_target_path = os.path.join("target", "mik32.cfg")
 
 openocd_default_speed = 500
 
-supported_formats = [".hex"]
+supported_text_formats = [".hex"]
 
 
 def test_connection():
@@ -61,72 +61,80 @@ mik32v0_sections: List[MemorySection] = [
 ]
 
 
-@dataclass
 class Segment:
     offset: int
-    memory: Union[MemorySection, None]
+    memory: Union[MemorySection, None] = None
     data: List[int]
 
+    def __init__(self, offset: int, data: List[int]):
+        self.offset = offset
+        self.data = data
 
-def belongs_memory_section(memory_section: MemorySection, offset: int) -> bool:
-    if offset < memory_section.offset:
-        return False
-    if offset >= (memory_section.offset + memory_section.length):
-        return False
+        for section in mik32v0_sections:
+            if self.belongs_memory_section(section, offset):
+                self.memory = section
+        
+    def belongs_memory_section(self, memory_section: MemorySection, offset: int) -> bool:
+        if offset < memory_section.offset:
+            return False
+        if offset >= (memory_section.offset + memory_section.length):
+            return False
 
-    return True
-
-
-def find_memory_section(offset: int) -> Union[MemorySection, None]:
-    for section in mik32v0_sections:
-        if belongs_memory_section(section, offset):
-            return section
-
-    return None
-
-
-def read_file(filename: str) -> List[Segment]:
-    segments: List[Segment] = []
-    lines: List[str] = []
-
-    file_name, file_extension = os.path.splitext(filename)
-    if file_extension in supported_formats:
-        with open(filename) as f:
-            lines = f.readlines()
-    elif file_extension == ".bin":
-        with open(filename, "rb") as f:
-            contents = list(f.read())
-            segments.append(
-                Segment(offset=0, memory=find_memory_section(0), data=contents))
-    else:
-        raise Exception(f"Unsupported file format: {file_extension}")
-
-    lba: int = 0        # Linear Base Address
-    expect_address = 0  # Address of the next byte
-
-    for i, line in enumerate(lines):
-        record: Record = parse_line(line, i, file_extension)
-        if record.type == RecordType.DATA:
-            drlo: int = record.address  # Data Record Load Offset
-            if (expect_address != lba+drlo) or (segments.__len__() == 0):
-                expect_address = lba+drlo
-                segments.append(Segment(
-                    offset=expect_address, memory=find_memory_section(expect_address), data=[]))
-
-            for byte in record.data:
-                segments[-1].data.append(byte)
-                expect_address += 1
-        elif record.type == RecordType.EXTADDR:
-            lba = record.address
-        elif record.type == RecordType.LINEARSTARTADDR:
-            print("Start Linear Address:", record.address)
-        elif record.type == RecordType.EOF:
-            break
-
-    return segments
+        return True
 
 
-def segment_to_pages(segment: Segment, page_size: int, pages: Dict[int, List[int]]):
+class FirmwareFile:
+    file_name: str
+    file_extension: str
+    file_content: Union[List[str], List[int]] = []
+
+    def __init__(self, path: str):
+        self.file_name, self.file_extension = os.path.splitext(path)
+
+        if self.file_extension in supported_text_formats:
+            with open(path) as f:
+                self.file_content = f.readlines()
+        elif self.file_extension == ".bin":
+            with open(path, "rb") as f:
+                self.file_content = list(f.read())
+        else:
+            raise Exception(f"Unsupported file format: {self.file_extension}")
+
+    def parse_text(self) -> List[Segment]:
+        segments: List[Segment] = []
+
+        lba: int = 0        # Linear Base Address
+        expect_address = 0  # Address of the next byte
+
+        for i, line in enumerate(self.file_content):
+            record: Record = parse_line(line, i, self.file_extension)
+            if record.type == RecordType.DATA:
+                drlo: int = record.address  # Data Record Load Offset
+                if (expect_address != lba+drlo) or (segments.__len__() == 0):
+                    expect_address = lba+drlo
+                    segments.append(Segment(
+                        offset=expect_address, data=[]))
+
+                for byte in record.data:
+                    segments[-1].data.append(byte)
+                    expect_address += 1
+            elif record.type == RecordType.EXTADDR:
+                lba = record.address
+            elif record.type == RecordType.LINEARSTARTADDR:
+                print("Start Linear Address:", record.address)
+            elif record.type == RecordType.EOF:
+                break
+
+        return segments
+    
+    def get_segments(self) -> List[Segment]:
+        if self.file_extension in supported_text_formats:
+            return self.parse_text()
+        elif self.file_extension == ".bin":
+            return [Segment(offset=0, data=self.file_content)]
+
+
+def fill_pages_from_segment(segment: Segment, page_size: int, pages: Dict[int, List[int]]):
     if segment.memory is None:
         return
 
@@ -147,7 +155,7 @@ def segments_to_pages(segments: List[Segment], page_size: int) -> Dict[int, List
     pages: Dict[int, List[int]] = {}
 
     for segment in segments:
-        segment_to_pages(segment, page_size, pages)
+        fill_pages_from_segment(segment, page_size, pages)
 
     return pages
 
@@ -167,24 +175,19 @@ def upload_file(
 ) -> int:
     """
     Write ihex or binary file into MIK32 EEPROM or external flash memory
-
     @filename: full path to the file with hex or bin file format
-
     @return: return 0 if successful, 1 if failed
     """
-
-    # print("Running OpenOCD...")
-
-    # print(DEFAULT_OPENOCD_EXEC_FILE_PATH)
-    # print(DEFAULT_OPENOCD_SCRIPTS_PATH)
 
     result = 0
 
     if not os.path.exists(filename):
         print(f"ERROR: File {filename} does not exist")
         exit(1)
+    
+    file = FirmwareFile(filename)
 
-    segments: List[Segment] = read_file(filename)
+    segments: List[Segment] = file.get_segments()
     # print(segments)
 
     for segment in segments:
@@ -222,7 +225,6 @@ def upload_file(
             result |= mik32_eeprom.write_pages(
                 pages_eeprom, openocd, is_resume)
         if (pages_spifi.__len__() > 0):
-            # print(pages_spifi)
             result |= mik32_spifi.write_pages(
                 pages_spifi, openocd, is_resume=is_resume, use_quad_spi=use_quad_spi)
         if (segments_ram.__len__() > 0):
