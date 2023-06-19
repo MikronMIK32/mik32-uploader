@@ -501,8 +501,10 @@ def write_pages(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc, is_resume=T
                     get_segments_list(list(pages), 4*1024))
     address = 0
 
-    spifi_quad_disable(openocd)
-    # spifi_quad_enable(openocd)
+    if (use_quad_spi):
+        spifi_quad_enable(openocd)
+    else:
+        spifi_quad_disable(openocd)
 
     pages_offsets = list(pages)
 
@@ -524,7 +526,8 @@ def write_pages(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc, is_resume=T
             print("Data error")
             return result
 
-    spifi_quad_disable(openocd)
+    if (use_quad_spi):
+        spifi_quad_disable(openocd)
 
     if is_resume:
         openocd.resume(0)
