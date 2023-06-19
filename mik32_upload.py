@@ -25,7 +25,7 @@ openocd_scripts_path = os.path.join("openocd", "share", "openocd", "scripts")
 openocd_interface_path = os.path.join("interface", "ftdi", "m-link.cfg")
 openocd_target_path = os.path.join("target", "mik32.cfg")
 
-openocd_default_speed = 500
+adapter_default_speed = 500
 
 supported_text_formats = [".hex"]
 
@@ -71,10 +71,10 @@ class Segment:
         self.data = data
 
         for section in mik32v0_sections:
-            if self.belongs_memory_section(section, offset):
+            if self._belongs_memory_section(section, offset):
                 self.memory = section
         
-    def belongs_memory_section(self, memory_section: MemorySection, offset: int) -> bool:
+    def _belongs_memory_section(self, memory_section: MemorySection, offset: int) -> bool:
         if offset < memory_section.offset:
             return False
         if offset >= (memory_section.offset + memory_section.length):
@@ -100,7 +100,7 @@ class FirmwareFile:
         else:
             raise Exception(f"Unsupported file format: {self.file_extension}")
 
-    def parse_text(self) -> List[Segment]:
+    def _parse_text(self) -> List[Segment]:
         segments: List[Segment] = []
 
         lba: int = 0        # Linear Base Address
@@ -129,7 +129,7 @@ class FirmwareFile:
     
     def get_segments(self) -> List[Segment]:
         if self.file_extension in supported_text_formats:
-            return self.parse_text()
+            return self._parse_text()
         elif self.file_extension == ".bin":
             return [Segment(offset=0, data=self.file_content)]
 
@@ -171,7 +171,7 @@ def upload_file(
         openocd_scripts=openocd_scripts_path,
         openocd_interface=openocd_interface_path,
         openocd_target=openocd_target_path,
-        openocd_speed=openocd_default_speed,
+        adapter_speed=adapter_default_speed,
 ) -> int:
     """
     Write ihex or binary file into MIK32 EEPROM or external flash memory
@@ -208,12 +208,16 @@ def upload_file(
             f"{openocd_exec} -s {openocd_scripts} "
             f"-f {openocd_interface} -f {openocd_target}", posix=False
         )
-        proc = subprocess.Popen(
-            cmd, creationflags=subprocess.CREATE_NEW_CONSOLE | subprocess.SW_HIDE)
         # proc = subprocess.Popen(
-        #     cmd, creationflags= subprocess.SW_HIDE)
+        #     cmd, creationflags=subprocess.CREATE_NEW_CONSOLE | subprocess.SW_HIDE)
+        proc = subprocess.Popen(
+            cmd, creationflags= subprocess.SW_HIDE)
 
     with OpenOcdTclRpc(host, port) as openocd:
+        openocd.run(f"adapter speed {adapter_speed}")
+        openocd.run(f"log_output stdout")
+        openocd.run(f"debug_level 1")
+
         pages_eeprom = segments_to_pages(list(filter(
             lambda segment: (segment.memory is not None) and (segment.memory.type == MemoryType.EEPROM), segments)), 128)
         pages_spifi = segments_to_pages(list(filter(
@@ -248,8 +252,8 @@ def createParser():
         '--openocd-host', dest='openocd_host', default='127.0.0.1')
     parser.add_argument('--openocd-port', dest='openocd_port',
                         default=OpenOcdTclRpc.DEFAULT_PORT)
-    parser.add_argument('--openocd-speed', dest='openocd_speed',
-                        default=openocd_default_speed)
+    parser.add_argument('--adapter-speed', dest='adapter_speed',
+                        default=adapter_default_speed)
     parser.add_argument('--keep-halt', dest='keep_halt',
                         action='store_true', default=False)
     parser.add_argument(
@@ -281,7 +285,7 @@ if __name__ == '__main__':
             openocd_scripts=namespace.openocd_scripts,
             openocd_interface=namespace.openocd_interface,
             openocd_target=namespace.openocd_target,
-            openocd_speed=namespace.openocd_speed,
+            adapter_speed=namespace.adapter_speed,
         )
     else:
         print("Nothing to upload")
