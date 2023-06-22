@@ -118,7 +118,7 @@ def eeprom_execute_operation(openocd: OpenOcdTclRpc, op: EEPROM_Operation, affec
     openocd.write_word(EEPROM_REGS_EECON, (1 << EEPROM_BWE_S)
                        | (affected_pages.value << EEPROM_WRBEH_S))
     openocd.write_word(EEPROM_REGS_EEA, offset)
-    
+
     if buffer.__len__() > 32:
         return
     for word in buffer:
@@ -130,9 +130,9 @@ def eeprom_execute_operation(openocd: OpenOcdTclRpc, op: EEPROM_Operation, affec
     ))
 
 
-def eeprom_configure_cycles(openocd: OpenOcdTclRpc, LD = 1, R_1 = 2, R_2 = 1, CYCEP1 = 66667, CYCEP2 = 500):
+def eeprom_configure_cycles(openocd: OpenOcdTclRpc, LD=1, R_1=2, R_2=1, CYCEP1=66667, CYCEP2=500):
     openocd.write_word(EEPROM_REGS_NCYCRL, LD << EEPROM_N_LD_S |
-                        R_1 << EEPROM_N_R_1_S | R_2 << EEPROM_N_R_2_S)
+                       R_1 << EEPROM_N_R_1_S | R_2 << EEPROM_N_R_2_S)
     openocd.write_word(EEPROM_REGS_NCYCEP1, CYCEP1)
     openocd.write_word(EEPROM_REGS_NCYCEP2, CYCEP2)
 
@@ -141,7 +141,8 @@ def eeprom_global_erase(openocd: OpenOcdTclRpc):
     print("EEPROM global erase...", flush=True)
     with OpenOcdTclRpc() as openocd:
         # configure cycles duration
-        eeprom_execute_operation(openocd, EEPROM_Operation.ERASE, EEPROM_AffectedPages.GLOBAL, 0x0, [0] * 32)
+        eeprom_execute_operation(
+            openocd, EEPROM_Operation.ERASE, EEPROM_AffectedPages.GLOBAL, 0x0, [0] * 32)
 
 
 def eeprom_global_erase_check(openocd: OpenOcdTclRpc):
@@ -159,12 +160,14 @@ def eeprom_global_erase_check(openocd: OpenOcdTclRpc):
 
 
 def eeprom_write_word(openocd: OpenOcdTclRpc, address: int, word: int):
-    eeprom_execute_operation(openocd, EEPROM_Operation.PROGRAM, EEPROM_AffectedPages.SINGLE, address, [word])
+    eeprom_execute_operation(
+        openocd, EEPROM_Operation.PROGRAM, EEPROM_AffectedPages.SINGLE, address, [word])
     time.sleep(0.001)
 
 
 def eeprom_write_page(openocd: OpenOcdTclRpc, address: int, data: List[int]):
-    eeprom_execute_operation(openocd, EEPROM_Operation.PROGRAM, EEPROM_AffectedPages.SINGLE, address, data)
+    eeprom_execute_operation(
+        openocd, EEPROM_Operation.PROGRAM, EEPROM_AffectedPages.SINGLE, address, data)
     time.sleep(0.001)
 
 
@@ -301,7 +304,8 @@ def write_pages(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc, read_throug
     for index, page_offset in enumerate(pages_offsets):
         page_words = bytes2words(pages[page_offset])
 
-        print(f"Writing page {page_offset:#06x}... {(index*100)//pages_offsets.__len__()}%", flush=True)
+        print(
+            f"Writing page {page_offset:#06x}... {(index*100)//pages_offsets.__len__()}%", flush=True)
         eeprom_write_page(openocd, page_offset, page_words)
         if read_through_apb:
             result = eeprom_check_data_apb(

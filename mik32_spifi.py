@@ -178,7 +178,7 @@ SREG1_BUSY = 1
 
 READ_SREG_LEN = 1
 READ_LEN = 256
-TIMEOUT = 100000
+TIMEOUT = 1000
 
 CHIP_ERASE_COMMAND = 0xC7
 SECTOR_ERASE_COMMAND = 0x20
@@ -255,27 +255,80 @@ def spifi_wait_intrq_timeout(openocd: OpenOcdTclRpc, error_message: str):
         return
 
 
+class SPIFI_Frameform(Enum):
+    RESERVED = 0
+    OPCODE_NOADDR = 1
+    OPCODE_1ADDR = 2
+    OPCODE_2ADDR = 3
+    OPCODE_3ADDR = 4
+    OPCODE_4ADDR = 5
+    NOOPCODE_3ADDR = 6
+    NOOPCODE_4ADDR = 7
+
+
+class SPIFI_Fieldform(Enum):
+    ALL_SERIAL = 0
+    DATA_PARALLEL = 1
+    OPCODE_SERIAL = 2
+    ALL_PARALLEL = 3
+
+
+class SPIFI_Direction(Enum):
+    READ = 0
+    WRITE = 1
+
+
+def spifi_send_command(
+        openocd: OpenOcdTclRpc,
+        cmd: int,
+        frameform: SPIFI_Frameform,
+        fieldform: SPIFI_Fieldform,
+        byte_count=0,
+        address=0,
+        idata=0,
+        cache_limit=0,
+        idata_length=0,
+        direction=SPIFI_Direction.READ,
+        data: List[int] = []
+) -> List[int]:
+    openocd.write_word(SPIFI_CONFIG_ADDR, address)
+    openocd.write_word(SPIFI_CONFIG_IDATA, idata)
+    openocd.write_word(SPIFI_CONFIG_CLIMIT, cache_limit)
+    spifi_intrq_clear(openocd)
+    openocd.write_word(SPIFI_CONFIG_CMD, (cmd << SPIFI_CONFIG_CMD_OPCODE_S) |
+                       (frameform.value << SPIFI_CONFIG_CMD_FRAMEFORM_S) |
+                       (fieldform.value << SPIFI_CONFIG_CMD_FIELDFORM_S) |
+                       (byte_count << SPIFI_CONFIG_CMD_DATALEN_S) |
+                       (idata_length << SPIFI_CONFIG_CMD_INTLEN_S) |
+                       (direction.value << SPIFI_CONFIG_CMD_DOUT_S))
+    # spifi_wait_intrq_timeout(openocd, "Timeout executing write enable command")
+
+    if direction == SPIFI_Direction.READ:
+        out_list = []
+        for i in range(byte_count):
+            out_list.append(openocd.read_memory(SPIFI_CONFIG_DATA32, 8, 1)[0])
+        return out_list
+
+    if direction == SPIFI_Direction.WRITE:
+        for i in range(byte_count):
+            # openocd.write_word(SPIFI_CONFIG_DATA32, data[i+ByteAddress])
+            openocd.write_memory(SPIFI_CONFIG_DATA32, 8, [data[i]])
+
+    return []
+
+
 def spifi_write_enable(openocd: OpenOcdTclRpc):
-    # spifi_intrq_clear(openocd)
-    openocd.write_word(SPIFI_CONFIG_STAT, openocd.read_word(
-        SPIFI_CONFIG_STAT) | SPIFI_CONFIG_STAT_INTRQ_M)
-    openocd.write_word(SPIFI_CONFIG_CMD, (WRITE_ENABLE_COMMAND << SPIFI_CONFIG_CMD_OPCODE_S) |
-                       (SPIFI_CONFIG_CMD_FRAMEFORM_OPCODE_NOADDR << SPIFI_CONFIG_CMD_FRAMEFORM_S) |
-                       (SPIFI_CONFIG_CMD_FIELDFORM_ALL_SERIAL << SPIFI_CONFIG_CMD_FIELDFORM_S))
-    spifi_wait_intrq_timeout(openocd, "Timeout executing write enable command")
+    spifi_send_command(openocd, WRITE_ENABLE_COMMAND,
+                       SPIFI_Frameform.OPCODE_NOADDR, SPIFI_Fieldform.ALL_SERIAL)
 
 
 def spifi_read_sreg(openocd: OpenOcdTclRpc, sreg: SREG_Num) -> int:
     read_sreg: int = 0
-    # spifi_intrq_clear(openocd)
-    openocd.write_word(SPIFI_CONFIG_STAT, openocd.read_word(
-        SPIFI_CONFIG_STAT) | SPIFI_CONFIG_STAT_INTRQ_M)
-    openocd.write_word(SPIFI_CONFIG_CMD, ((READ_SREG1_COMMAND | sreg.value) << SPIFI_CONFIG_CMD_OPCODE_S) |
-                       (SPIFI_CONFIG_CMD_FRAMEFORM_OPCODE_NOADDR << SPIFI_CONFIG_CMD_FRAMEFORM_S) |
-                       (SPIFI_CONFIG_CMD_FIELDFORM_ALL_SERIAL << SPIFI_CONFIG_CMD_FIELDFORM_S) |
-                       (READ_SREG_LEN << SPIFI_CONFIG_CMD_DATALEN_S))
-    spifi_wait_intrq_timeout(openocd, "Timeout executing read sreg1 command")
-    return openocd.read_memory(SPIFI_CONFIG_DATA32, 8, 1)[0]
+
+    return spifi_send_command(
+        openocd, READ_SREG1_COMMAND | sreg.value, SPIFI_Frameform.OPCODE_NOADDR,
+        SPIFI_Fieldform.ALL_SERIAL, byte_count=READ_SREG_LEN
+    )[0]
 
 
 def spifi_wait_busy(openocd: OpenOcdTclRpc):
@@ -287,43 +340,21 @@ def spifi_wait_busy(openocd: OpenOcdTclRpc):
 
 def spifi_chip_erase(openocd: OpenOcdTclRpc):
     print("Chip erase...", flush=True)
-    # spifi_intrq_clear(openocd)
-    openocd.write_word(SPIFI_CONFIG_STAT, openocd.read_word(
-        SPIFI_CONFIG_STAT) | SPIFI_CONFIG_STAT_INTRQ_M)
-    openocd.write_word(SPIFI_CONFIG_CMD, (CHIP_ERASE_COMMAND << SPIFI_CONFIG_CMD_OPCODE_S) |
-                       (SPIFI_CONFIG_CMD_FRAMEFORM_OPCODE_NOADDR << SPIFI_CONFIG_CMD_FRAMEFORM_S) |
-                       (SPIFI_CONFIG_CMD_FIELDFORM_ALL_SERIAL << SPIFI_CONFIG_CMD_FIELDFORM_S))
-    spifi_wait_intrq_timeout(openocd, "Timeout executing chip erase command")
+    spifi_send_command(openocd, CHIP_ERASE_COMMAND,
+                       SPIFI_Frameform.OPCODE_NOADDR, SPIFI_Fieldform.ALL_SERIAL)
 
 
 def spifi_sector_erase(openocd: OpenOcdTclRpc, address: int):
     print("Erase sector %s..." % hex(address), flush=True)
-    openocd.write_word(SPIFI_CONFIG_ADDR, address)
-
-    spifi_intrq_clear(openocd)
-    # openocd.write_word(SPIFI_CONFIG_STAT, openocd.read_word(
-    #     SPIFI_CONFIG_STAT) | SPIFI_CONFIG_STAT_INTRQ_M)
-    openocd.write_word(SPIFI_CONFIG_CMD, (SECTOR_ERASE_COMMAND << SPIFI_CONFIG_CMD_OPCODE_S) |
-                       (SPIFI_CONFIG_CMD_FRAMEFORM_OPCODE_3ADDR << SPIFI_CONFIG_CMD_FRAMEFORM_S) |
-                       (SPIFI_CONFIG_CMD_FIELDFORM_ALL_SERIAL << SPIFI_CONFIG_CMD_FIELDFORM_S))
-    # spifi_wait_intrq_timeout(openocd, "Timeout executing chip erase command")
-    spifi_intrq_clear(openocd)
+    spifi_send_command(openocd, SECTOR_ERASE_COMMAND,
+                       SPIFI_Frameform.OPCODE_3ADDR, SPIFI_Fieldform.ALL_SERIAL, address=address)
 
 
 def spifi_read_data(openocd: OpenOcdTclRpc, address: int, byte_count: int, bin_data: List[int]) -> int:
     read_data: List[int] = []
-    openocd.write_word(SPIFI_CONFIG_ADDR, address)
 
-    spifi_intrq_clear(openocd)
-    openocd.write_word(SPIFI_CONFIG_CMD, (READ_DATA_COMMAND << SPIFI_CONFIG_CMD_OPCODE_S) |
-                       (SPIFI_CONFIG_CMD_FRAMEFORM_OPCODE_3ADDR << SPIFI_CONFIG_CMD_FRAMEFORM_S) |
-                       (SPIFI_CONFIG_CMD_FIELDFORM_ALL_SERIAL << SPIFI_CONFIG_CMD_FIELDFORM_S) |
-                       (byte_count << SPIFI_CONFIG_CMD_DATALEN_S))
-    # spifi_wait_intrq_timeout(openocd, "Timeout executing read data command")
-    for i in range(byte_count):
-        data8 = openocd.read_memory(SPIFI_CONFIG_DATA32, 8, 1)[0]
-        read_data.append(data8)
-        # print(f"DATA[{i+address}] = {read_data[i]:#0x}")
+    read_data = spifi_send_command(openocd, READ_DATA_COMMAND, SPIFI_Frameform.OPCODE_3ADDR,
+                                   SPIFI_Fieldform.ALL_SERIAL, byte_count=byte_count, address=address)
 
     for i in range(byte_count):
         if read_data[i] != bin_data[i]:
@@ -339,25 +370,9 @@ def spifi_page_program(openocd: OpenOcdTclRpc, ByteAddress: int, data: List[int]
     if byte_count > 256:
         raise Exception("Byte count more than 256")
 
-    # spifi_intrq_clear(openocd)
-    openocd.write_word(SPIFI_CONFIG_STAT, openocd.read_word(
-        SPIFI_CONFIG_STAT) | SPIFI_CONFIG_STAT_INTRQ_M)
-    openocd.write_word(SPIFI_CONFIG_ADDR, ByteAddress)
-    openocd.write_word(SPIFI_CONFIG_IDATA, 0x00)
-    openocd.write_word(SPIFI_CONFIG_CLIMIT, 0x00000000)
-    openocd.write_word(SPIFI_CONFIG_CMD, (PAGE_PROGRAM_COMMAND << SPIFI_CONFIG_CMD_OPCODE_S) |
-                       (SPIFI_CONFIG_CMD_FRAMEFORM_OPCODE_3ADDR << SPIFI_CONFIG_CMD_FRAMEFORM_S) |
-                       (SPIFI_CONFIG_CMD_FIELDFORM_ALL_SERIAL << SPIFI_CONFIG_CMD_FIELDFORM_S) |
-                       (0 << SPIFI_CONFIG_CMD_INTLEN_S) |
-                       (1 << SPIFI_CONFIG_CMD_DOUT_S) |
-                       (0 << SPIFI_CONFIG_CMD_POLL_S) |
-                       (byte_count << SPIFI_CONFIG_CMD_DATALEN_S))
-    for i in range(byte_count):
-        # openocd.write_word(SPIFI_CONFIG_DATA32, data[i+ByteAddress])
-        openocd.write_memory(SPIFI_CONFIG_DATA32, 8, [data[i]])
-    # spifi_intrq_clear(openocd)
-    openocd.write_word(SPIFI_CONFIG_STAT, openocd.read_word(
-        SPIFI_CONFIG_STAT) | SPIFI_CONFIG_STAT_INTRQ_M)
+    spifi_send_command(openocd, PAGE_PROGRAM_COMMAND, SPIFI_Frameform.OPCODE_3ADDR,
+                       SPIFI_Fieldform.ALL_SERIAL, byte_count=byte_count, address=ByteAddress,
+                       idata=0, cache_limit=0, direction=SPIFI_Direction.WRITE, data=data)
 
 
 class EraseType(Enum):
