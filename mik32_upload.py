@@ -196,6 +196,21 @@ def run_openocd(
     return proc
 
 
+class Pages(NamedTuple):
+    pages_eeprom: Dict[int, List[int]]
+    pages_spifi: Dict[int, List[int]]
+
+def form_pages(segments: List[Segment]) -> Pages:
+    pages_eeprom = segments_to_pages(list(filter(
+        lambda segment: (segment.memory is not None) and (segment.memory.type == MemoryType.EEPROM), segments)
+    ), 128)
+    pages_spifi = segments_to_pages(list(filter(
+        lambda segment: (segment.memory is not None) and (segment.memory.type == MemoryType.SPIFI), segments)
+    ), 256)
+
+    return Pages(pages_eeprom, pages_spifi)
+
+
 def upload_file(
         filename: str,
         host: str = '127.0.0.1',
@@ -225,7 +240,7 @@ def upload_file(
     file = FirmwareFile(filename)
 
     segments: List[Segment] = file.get_segments()
-    # print(segments)
+    pages: Pages = form_pages(segments)
 
     proc: Union[subprocess.Popen, None] = None
     if is_run_openocd:
@@ -237,19 +252,12 @@ def upload_file(
         openocd.run(f"log_output stdout")
         openocd.run(f"debug_level 1")
 
-        pages_eeprom = segments_to_pages(list(filter(
-            lambda segment: (segment.memory is not None) and (segment.memory.type == MemoryType.EEPROM), segments)
-        ), 128)
-        pages_spifi = segments_to_pages(list(filter(
-            lambda segment: (segment.memory is not None) and (segment.memory.type == MemoryType.SPIFI), segments)
-        ), 256)
-
-        if (pages_eeprom.__len__() > 0):
+        if (pages.pages_eeprom.__len__() > 0):
             result |= mik32_eeprom.write_pages(
-                pages_eeprom, openocd, is_resume)
-        if (pages_spifi.__len__() > 0):
+                pages.pages_eeprom, openocd, is_resume)
+        if (pages.pages_spifi.__len__() > 0):
             result |= mik32_spifi.write_pages(
-                pages_spifi, openocd, is_resume=is_resume, use_quad_spi=use_quad_spi)
+                pages.pages_spifi, openocd, is_resume=is_resume, use_quad_spi=use_quad_spi)
 
         segments_ram = list(filter(
             lambda segment: (segment.memory is not None) and (segment.memory.type == MemoryType.RAM), segments))
