@@ -55,6 +55,16 @@ class BootMode(Enum):
 
     def __str__(self):
         return self.value
+    
+    def to_memory_type(self) -> MemoryType:
+        if self.value == 'eeprom':
+            return MemoryType.EEPROM
+        if self.value == 'ram':
+            return MemoryType.RAM
+        if self.value == 'spifi':
+            return MemoryType.SPIFI
+        
+        return MemoryType.UNKNOWN
 
 
 class MemorySection(NamedTuple):
@@ -224,13 +234,13 @@ def filter_segments(segments: List[Segment], memory_type: MemoryType, boot_type:
     )
 
 
-def form_pages(segments: List[Segment]) -> Pages:
+def form_pages(segments: List[Segment], boot_mode = BootMode.UNDEFINED) -> Pages:
     pages_eeprom = segments_to_pages(
-        filter_segments(segments, MemoryType.EEPROM),
+        filter_segments(segments, MemoryType.EEPROM, boot_mode.to_memory_type()),
         128
     )
     pages_spifi = segments_to_pages(
-        filter_segments(segments, MemoryType.SPIFI),
+        filter_segments(segments, MemoryType.SPIFI, boot_mode.to_memory_type()),
         256
     )
 
@@ -267,7 +277,7 @@ def upload_file(
     file = FirmwareFile(filename)
 
     segments: List[Segment] = file.get_segments()
-    pages: Pages = form_pages(segments)
+    pages: Pages = form_pages(segments, boot_mode)
 
     proc: Union[subprocess.Popen, None] = None
     if is_run_openocd:
