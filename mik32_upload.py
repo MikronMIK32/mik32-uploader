@@ -47,6 +47,16 @@ class MemoryType(Enum):
     UNKNOWN = -1
 
 
+class BootMode(Enum):
+    UNDEFINED = 'undefined'
+    EEPROM = 'eeprom'
+    RAM = 'ram'
+    SPIFI = 'spifi'
+
+    def __str__(self):
+        return self.value
+
+
 class MemorySection(NamedTuple):
     type: MemoryType
     offset: int
@@ -200,13 +210,29 @@ class Pages(NamedTuple):
     pages_eeprom: Dict[int, List[int]]
     pages_spifi: Dict[int, List[int]]
 
+
+def filter_segments(segments: List[Segment], memory_type: MemoryType, boot_type: MemoryType = MemoryType.UNKNOWN) -> List[Segment]:
+    return list(
+        filter(
+            lambda segment:
+               (segment.memory is not None) and
+               ((segment.memory.type == memory_type) or (
+                   (segment.memory.type == MemoryType.BOOT) and
+                   (boot_type == memory_type)
+               )), segments
+        )
+    )
+
+
 def form_pages(segments: List[Segment]) -> Pages:
-    pages_eeprom = segments_to_pages(list(filter(
-        lambda segment: (segment.memory is not None) and (segment.memory.type == MemoryType.EEPROM), segments)
-    ), 128)
-    pages_spifi = segments_to_pages(list(filter(
-        lambda segment: (segment.memory is not None) and (segment.memory.type == MemoryType.SPIFI), segments)
-    ), 256)
+    pages_eeprom = segments_to_pages(
+        filter_segments(segments, MemoryType.EEPROM),
+        128
+    )
+    pages_spifi = segments_to_pages(
+        filter_segments(segments, MemoryType.SPIFI),
+        256
+    )
 
     return Pages(pages_eeprom, pages_spifi)
 
@@ -224,6 +250,7 @@ def upload_file(
         openocd_target=openocd_target_path,
         adapter_speed=adapter_default_speed,
         is_open_console=False,
+        boot_mode=BootMode.UNDEFINED
 ) -> int:
     """
     Write ihex or binary file into MIK32 EEPROM or external flash memory
@@ -296,7 +323,8 @@ def createParser():
         '--openocd-target', dest='openocd_target', default=openocd_target_path)
     parser.add_argument('--open-console', dest='open_console',
                         action='store_true', default=False)
-    # parser.add_argument('-b', '--boot-mode', default='undefined')
+    parser.add_argument('-b', '--boot-mode', dest='boot_mode', type=BootMode,
+                        choices=list(BootMode), default=BootMode.UNDEFINED)
 
     return parser
 
@@ -319,6 +347,7 @@ if __name__ == '__main__':
             openocd_target=namespace.openocd_target,
             adapter_speed=namespace.adapter_speed,
             is_open_console=namespace.open_console,
+            boot_mode=namespace.boot_mode
         )
     else:
         print("Nothing to upload")
