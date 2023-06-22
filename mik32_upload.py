@@ -70,10 +70,24 @@ class Segment:
         self.offset = offset
         self.data = data
 
+        self._locate_memory_section()
+
+    def _locate_memory_section(self):
         for section in mik32v0_sections:
-            if self._belongs_memory_section(section, offset):
+            if self._belongs_memory_section(section, self.offset):
                 self.memory = section
-        
+
+        if self.memory is None:
+            raise Exception(
+                f"ERROR: segment with offset {self.offset:#0x} doesn't belong to any section")
+
+        if (self.offset + self.data.__len__()) > (self.memory.offset + self.memory.length):
+            raise Exception(
+                f"ERROR: segment with offset {self.offset:#0x} "
+                f"and length {self.data.__len__()} "
+                f"overflows section {self.memory.type.name}"
+            )
+
     def _belongs_memory_section(self, memory_section: MemorySection, offset: int) -> bool:
         if offset < memory_section.offset:
             return False
@@ -126,7 +140,7 @@ class FirmwareFile:
                 break
 
         return segments
-    
+
     def get_segments(self) -> List[Segment]:
         if self.file_extension in supported_text_formats:
             return self._parse_text()
@@ -160,18 +174,41 @@ def segments_to_pages(segments: List[Segment], page_size: int) -> Dict[int, List
     return pages
 
 
+def run_openocd(
+    openocd_exec=openocd_exec_path,
+    openocd_scripts=openocd_scripts_path,
+    openocd_interface=openocd_interface_path,
+    openocd_target=openocd_target_path,
+    is_open_console=False
+) -> subprocess.Popen:
+    cmd = shlex.split(
+        f"{openocd_exec} -s {openocd_scripts} "
+        f"-f {openocd_interface} -f {openocd_target}", posix=False
+    )
+
+    creation_flags = subprocess.SW_HIDE
+    if is_open_console:
+        creation_flags |= subprocess.CREATE_NEW_CONSOLE
+
+    proc = subprocess.Popen(
+        cmd, creationflags=creation_flags)
+
+    return proc
+
+
 def upload_file(
         filename: str,
         host: str = '127.0.0.1',
         port: int = OpenOcdTclRpc.DEFAULT_PORT,
         is_resume=True,
-        run_openocd=False,
+        is_run_openocd=False,
         use_quad_spi=False,
         openocd_exec=openocd_exec_path,
         openocd_scripts=openocd_scripts_path,
         openocd_interface=openocd_interface_path,
         openocd_target=openocd_target_path,
         adapter_speed=adapter_default_speed,
+        is_open_console=False,
 ) -> int:
     """
     Write ihex or binary file into MIK32 EEPROM or external flash memory
@@ -184,34 +221,16 @@ def upload_file(
     if not os.path.exists(filename):
         print(f"ERROR: File {filename} does not exist")
         exit(1)
-    
+
     file = FirmwareFile(filename)
 
     segments: List[Segment] = file.get_segments()
     # print(segments)
 
-    for segment in segments:
-        if segment.memory is None:
-            raise Exception(
-                f"ERROR: segment with offset {segment.offset:#0x} doesn't belong to any section")
-
-        if (segment.offset + segment.data.__len__()) > (segment.memory.offset + segment.memory.length):
-            raise Exception(
-                f"ERROR: segment with offset {segment.offset:#0x} "
-                f"and length {segment.data.__len__()} "
-                f"overflows section {segment.memory.type.name}"
-            )
-
     proc: Union[subprocess.Popen, None] = None
-    if run_openocd:
-        cmd = shlex.split(
-            f"{openocd_exec} -s {openocd_scripts} "
-            f"-f {openocd_interface} -f {openocd_target}", posix=False
-        )
-        # proc = subprocess.Popen(
-        #     cmd, creationflags=subprocess.CREATE_NEW_CONSOLE | subprocess.SW_HIDE)
-        proc = subprocess.Popen(
-            cmd, creationflags= subprocess.SW_HIDE)
+    if is_run_openocd:
+        proc = run_openocd(openocd_exec, openocd_scripts,
+                           openocd_interface, openocd_target, is_open_console)
 
     with OpenOcdTclRpc(host, port) as openocd:
         openocd.run(f"adapter speed {adapter_speed}")
@@ -219,11 +238,11 @@ def upload_file(
         openocd.run(f"debug_level 1")
 
         pages_eeprom = segments_to_pages(list(filter(
-            lambda segment: (segment.memory is not None) and (segment.memory.type == MemoryType.EEPROM), segments)), 128)
+            lambda segment: (segment.memory is not None) and (segment.memory.type == MemoryType.EEPROM), segments)
+        ), 128)
         pages_spifi = segments_to_pages(list(filter(
-            lambda segment: (segment.memory is not None) and (segment.memory.type == MemoryType.SPIFI), segments)), 256)
-        segments_ram = list(filter(
-            lambda segment: (segment.memory is not None) and (segment.memory.type == MemoryType.RAM), segments))
+            lambda segment: (segment.memory is not None) and (segment.memory.type == MemoryType.SPIFI), segments)
+        ), 256)
 
         if (pages_eeprom.__len__() > 0):
             result |= mik32_eeprom.write_pages(
@@ -231,11 +250,14 @@ def upload_file(
         if (pages_spifi.__len__() > 0):
             result |= mik32_spifi.write_pages(
                 pages_spifi, openocd, is_resume=is_resume, use_quad_spi=use_quad_spi)
+
+        segments_ram = list(filter(
+            lambda segment: (segment.memory is not None) and (segment.memory.type == MemoryType.RAM), segments))
         if (segments_ram.__len__() > 0):
             mik32_ram.write_segments(segments_ram, openocd, is_resume)
             result |= 0
 
-    if run_openocd and proc is not None:
+    if proc is not None:
         proc.kill()
 
     return result
@@ -264,6 +286,8 @@ def createParser():
         '--openocd-interface', dest='openocd_interface', default=openocd_interface_path)
     parser.add_argument(
         '--openocd-target', dest='openocd_target', default=openocd_target_path)
+    parser.add_argument('--open-console', dest='open_console',
+                        action='store_true', default=False)
     # parser.add_argument('-b', '--boot-mode', default='undefined')
 
     return parser
@@ -279,13 +303,14 @@ if __name__ == '__main__':
             host=namespace.openocd_host,
             port=namespace.openocd_port,
             is_resume=(not namespace.keep_halt),
-            run_openocd=namespace.run_openocd,
+            is_run_openocd=namespace.run_openocd,
             use_quad_spi=namespace.use_quad_spi,
             openocd_exec=namespace.openocd_exec,
             openocd_scripts=namespace.openocd_scripts,
             openocd_interface=namespace.openocd_interface,
             openocd_target=namespace.openocd_target,
             adapter_speed=namespace.adapter_speed,
+            is_open_console=namespace.open_console,
         )
     else:
         print("Nothing to upload")
