@@ -1,3 +1,4 @@
+from enum import Enum
 from typing import Dict, List
 import time
 from tclrpc import OpenOcdTclRpc
@@ -99,25 +100,48 @@ def eeprom_sysinit(openocd: OpenOcdTclRpc):
     openocd.write_word(PM_BASE_ADDRESS + PM_Clk_AHB_Set_OFFSET, 0xffffffff)
 
 
+class EEPROM_Operation(Enum):
+    READ = EEPROM_OP_RD
+    ERASE = EEPROM_OP_ER
+    PROGRAM = EEPROM_OP_PR
+
+
+class EEPROM_AffectedPages(Enum):
+    SINGLE = 0
+    EVEN = EEPROM_BEH_EVEN
+    ODD = EEPROM_BEH_ODD
+    GLOBAL = EEPROM_BEH_GLOB
+
+
+def eeprom_execute_operation(openocd: OpenOcdTclRpc, op: EEPROM_Operation, affected_pages: EEPROM_AffectedPages, offset: int, buffer: List[int]):
+    # buffer write enable and select affected pages
+    openocd.write_word(EEPROM_REGS_EECON, (1 << EEPROM_BWE_S)
+                       | (affected_pages.value << EEPROM_WRBEH_S))
+    openocd.write_word(EEPROM_REGS_EEA, offset)
+    
+    if buffer.__len__() > 32:
+        return
+    for word in buffer:
+        openocd.write_word(EEPROM_REGS_EEDAT, word)
+    # start operation
+    openocd.write_word(EEPROM_REGS_EECON, (
+        (1 << EEPROM_EX_S) | (1 << EEPROM_BWE_S) |
+        (op.value << EEPROM_OP_S) | (affected_pages.value << EEPROM_WRBEH_S)
+    ))
+
+
+def eeprom_configure_cycles(openocd: OpenOcdTclRpc, LD = 1, R_1 = 2, R_2 = 1, CYCEP1 = 66667, CYCEP2 = 500):
+    openocd.write_word(EEPROM_REGS_NCYCRL, LD << EEPROM_N_LD_S |
+                        R_1 << EEPROM_N_R_1_S | R_2 << EEPROM_N_R_2_S)
+    openocd.write_word(EEPROM_REGS_NCYCEP1, CYCEP1)
+    openocd.write_word(EEPROM_REGS_NCYCEP2, CYCEP2)
+
+
 def eeprom_global_erase(openocd: OpenOcdTclRpc):
     print("EEPROM global erase...", flush=True)
     with OpenOcdTclRpc() as openocd:
-        openocd.write_word(EEPROM_REGS_NCYCRL, 1 << EEPROM_N_LD_S |
-                           3 << EEPROM_N_R_1_S | 1 << EEPROM_N_R_2_S)
-        openocd.write_word(EEPROM_REGS_NCYCEP1, 100000)
-        openocd.write_word(EEPROM_REGS_NCYCEP2, 1000)
-        time.sleep(0.1)
-        openocd.write_word(EEPROM_REGS_EECON, (1 << EEPROM_BWE_S)
-                           | (EEPROM_BEH_GLOB << EEPROM_WRBEH_S))
-        openocd.write_word(EEPROM_REGS_EEA, 0x00000000)
-        # buffer load
-        for i in range(0, 32):
-            openocd.write_word(EEPROM_REGS_EEDAT, 0x00000000)
-        # start operation
-        openocd.write_word(EEPROM_REGS_EECON, (
-            (1 << EEPROM_EX_S) | (1 << EEPROM_BWE_S) |
-            (EEPROM_OP_ER << EEPROM_OP_S) | (EEPROM_BEH_GLOB << EEPROM_WRBEH_S)
-        ))
+        # configure cycles duration
+        eeprom_execute_operation(openocd, EEPROM_Operation.ERASE, EEPROM_AffectedPages.GLOBAL, 0x0, [0] * 32)
 
 
 def eeprom_global_erase_check(openocd: OpenOcdTclRpc):
@@ -135,34 +159,19 @@ def eeprom_global_erase_check(openocd: OpenOcdTclRpc):
 
 
 def eeprom_write_word(openocd: OpenOcdTclRpc, address: int, word: int):
-    openocd.write_word(EEPROM_REGS_EECON, 1 << EEPROM_BWE_S)
-    openocd.write_word(EEPROM_REGS_EEA, address)
-    # buffer load
-    openocd.write_word(EEPROM_REGS_EEDAT, word)
-    openocd.write_word(EEPROM_REGS_EECON, (1 << EEPROM_EX_S) | (
-        1 << EEPROM_BWE_S) | (EEPROM_OP_PR << EEPROM_OP_S))
+    eeprom_execute_operation(openocd, EEPROM_Operation.PROGRAM, EEPROM_AffectedPages.SINGLE, address, [word])
     time.sleep(0.001)
 
 
-def eeprom_write_page(openocd: OpenOcdTclRpc, address: int, data: List[int], progress: str = ""):
-    print(f"Writing page {address:#06x}... {progress}", flush=True)
-    openocd.write_word(EEPROM_REGS_EECON, 1 << EEPROM_BWE_S)
-    openocd.write_word(EEPROM_REGS_EEA, address)
-    page_address = address & EEPROM_PAGE_MASK
-    n = 0
-    # buffer load
-    for word in data:
-        if ((address + n) & EEPROM_PAGE_MASK) != page_address:
-            raise Exception("ERROR: word outside page!", flush=True)
-        openocd.write_word(EEPROM_REGS_EEDAT, word)
-    openocd.write_word(EEPROM_REGS_EECON, (1 << EEPROM_EX_S) | (
-        1 << EEPROM_BWE_S) | (EEPROM_OP_PR << EEPROM_OP_S))
+def eeprom_write_page(openocd: OpenOcdTclRpc, address: int, data: List[int]):
+    eeprom_execute_operation(openocd, EEPROM_Operation.PROGRAM, EEPROM_AffectedPages.SINGLE, address, data)
     time.sleep(0.001)
 
 
 def eeprom_check_data_apb(openocd: OpenOcdTclRpc, words: List[int], offset: int, print_progress=True) -> int:
     if print_progress:
         print("EEPROM check through APB...", flush=True)
+    # address load
     openocd.write_word(EEPROM_REGS_EEA, offset)
     word_num = 0
     progress = 0
@@ -229,10 +238,8 @@ def write_words(words: List[int], openocd: OpenOcdTclRpc, write_by_word=False, r
     eeprom_sysinit(openocd)
     eeprom_global_erase(openocd)
     # eeprom_global_erase_check(openocd)
-    openocd.write_word(EEPROM_REGS_NCYCRL, 1 << EEPROM_N_LD_S |
-                       3 << EEPROM_N_R_1_S | 1 << EEPROM_N_R_2_S)
-    openocd.write_word(EEPROM_REGS_NCYCEP1, 100000)
-    openocd.write_word(EEPROM_REGS_NCYCEP2, 1000)
+    # configure cycles duration
+    eeprom_configure_cycles(openocd, 1, 3, 1, 100000, 1000)
     time.sleep(0.1)
     word_num: int = 0
     progress: int = 0
@@ -284,10 +291,8 @@ def write_pages(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc, read_throug
     eeprom_sysinit(openocd)
     eeprom_global_erase(openocd)
     # eeprom_global_erase_check(openocd)
-    openocd.write_word(EEPROM_REGS_NCYCRL, 1 << EEPROM_N_LD_S |
-                       3 << EEPROM_N_R_1_S | 1 << EEPROM_N_R_2_S)
-    openocd.write_word(EEPROM_REGS_NCYCEP1, 100000)
-    openocd.write_word(EEPROM_REGS_NCYCEP2, 1000)
+    # configure cycles duration
+    eeprom_configure_cycles(openocd, 1, 3, 1, 100000, 1000)
     time.sleep(0.1)
     print("EEPROM writing...", flush=True)
 
@@ -295,8 +300,9 @@ def write_pages(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc, read_throug
 
     for index, page_offset in enumerate(pages_offsets):
         page_words = bytes2words(pages[page_offset])
-        eeprom_write_page(openocd, page_offset, page_words,
-                          f"{(index*100)//pages_offsets.__len__()}%")
+
+        print(f"Writing page {page_offset:#06x}... {(index*100)//pages_offsets.__len__()}%", flush=True)
+        eeprom_write_page(openocd, page_offset, page_words)
         if read_through_apb:
             result = eeprom_check_data_apb(
                 openocd, page_words, page_offset, False)
