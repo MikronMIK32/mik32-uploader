@@ -25,6 +25,7 @@ openocd_scripts_path = os.path.join("openocd", "share", "openocd", "scripts")
 openocd_interface_path = os.path.join("interface", "ftdi", "m-link.cfg")
 openocd_target_path = os.path.join("target", "mik32.cfg")
 default_log_path = "nul"
+default_post_action = "reset run"
 
 adapter_default_speed = 500
 
@@ -254,7 +255,6 @@ def upload_file(
         filename: str,
         host: str = '127.0.0.1',
         port: int = OpenOcdTclRpc.DEFAULT_PORT,
-        is_resume=True,
         is_run_openocd=False,
         use_quad_spi=False,
         openocd_exec=openocd_exec_path,
@@ -265,6 +265,7 @@ def upload_file(
         is_open_console=False,
         boot_mode=BootMode.UNDEFINED,
         log_path=default_log_path,
+        post_action=default_post_action
 ) -> int:
     """
     Write ihex or binary file into MIK32 EEPROM or external flash memory
@@ -295,16 +296,18 @@ def upload_file(
 
         if (pages.pages_eeprom.__len__() > 0):
             result |= mik32_eeprom.write_pages(
-                pages.pages_eeprom, openocd, is_resume)
+                pages.pages_eeprom, openocd)
         if (pages.pages_spifi.__len__() > 0):
             result |= mik32_spifi.write_pages(
-                pages.pages_spifi, openocd, is_resume=is_resume, use_quad_spi=use_quad_spi)
+                pages.pages_spifi, openocd, use_quad_spi=use_quad_spi)
 
         segments_ram = list(filter(
             lambda segment: (segment.memory is not None) and (segment.memory.type == MemoryType.RAM), segments))
         if (segments_ram.__len__() > 0):
-            mik32_ram.write_segments(segments_ram, openocd, is_resume)
+            mik32_ram.write_segments(segments_ram, openocd)
             result |= 0
+        
+        openocd.run(post_action)
 
     if proc is not None:
         proc.kill()
@@ -325,8 +328,6 @@ def createParser():
                         default=OpenOcdTclRpc.DEFAULT_PORT)
     parser.add_argument('--adapter-speed', dest='adapter_speed',
                         default=adapter_default_speed)
-    parser.add_argument('--keep-halt', dest='keep_halt',
-                        action='store_true', default=False)
     parser.add_argument(
         '--openocd-exec', dest='openocd_exec', default=openocd_exec_path)
     parser.add_argument(
@@ -341,6 +342,8 @@ def createParser():
                         choices=list(BootMode), default=BootMode.UNDEFINED)
     parser.add_argument('--log-path', dest='log_path',
                         default=default_log_path)
+    parser.add_argument('--post-action', dest='post_action',
+                        default=default_post_action)
 
     return parser
 
@@ -354,7 +357,6 @@ if __name__ == '__main__':
             namespace.filepath,
             host=namespace.openocd_host,
             port=namespace.openocd_port,
-            is_resume=(not namespace.keep_halt),
             is_run_openocd=namespace.run_openocd,
             use_quad_spi=namespace.use_quad_spi,
             openocd_exec=namespace.openocd_exec,
@@ -365,6 +367,7 @@ if __name__ == '__main__':
             is_open_console=namespace.open_console,
             boot_mode=namespace.boot_mode,
             log_path=namespace.log_path,
+            post_action=namespace.post_action,
         )
     else:
         print("Nothing to upload")

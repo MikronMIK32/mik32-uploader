@@ -474,7 +474,7 @@ def get_segments_list(pages_offsets: List[int], segment_size: int) -> List[int]:
     return list(segments)
 
 
-def write_pages(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc, is_resume=True, use_quad_spi=False, use_chip_erase=False):
+def write_pages(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc, use_quad_spi=False, use_chip_erase=False):
     result = 0
 
     openocd.halt()
@@ -511,9 +511,6 @@ def write_pages(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc, is_resume=T
 
     if (use_quad_spi):
         spifi_quad_disable(openocd)
-
-    if is_resume:
-        openocd.resume(0)
 
     if result == 0:
         print("SPIFI page recording completed", flush=True)

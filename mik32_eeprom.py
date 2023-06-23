@@ -287,7 +287,7 @@ def write_words(words: List[int], openocd: OpenOcdTclRpc, write_by_word=False, r
     return result
 
 
-def write_pages(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc, read_through_apb=False, is_resume=True) -> int:
+def write_pages(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc, read_through_apb=False) -> int:
     result = 0
 
     openocd.halt()
@@ -317,9 +317,6 @@ def write_pages(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc, read_throug
         if result == 1:
             print("Page mismatch!", flush=True)
             return result
-
-    if is_resume:
-        openocd.resume(0)
 
     if result == 0:
         print("EEPROM page recording completed", flush=True)
