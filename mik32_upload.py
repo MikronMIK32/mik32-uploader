@@ -4,7 +4,7 @@ import subprocess
 import os
 from enum import Enum
 from typing import List, Dict, NamedTuple, Union
-from tclrpc import OpenOcdTclRpc
+from tclrpc import OpenOcdTclRpc, TclException
 import mik32_eeprom
 import mik32_spifi
 import mik32_ram
@@ -157,7 +157,7 @@ class FirmwareFile:
             elif record.type == RecordType.EXTADDR:
                 lba = record.address
             elif record.type == RecordType.LINEARSTARTADDR:
-                print("Start Linear Address:", record.address)
+                print(f"Start Linear Address: {record.address:#10x}", )
             elif record.type == RecordType.EOF:
                 break
 
@@ -288,26 +288,31 @@ def upload_file(
     if is_run_openocd:
         proc = run_openocd(openocd_exec, openocd_scripts,
                            openocd_interface, openocd_target, is_open_console)
+    try:
+        with OpenOcdTclRpc(host, port) as openocd:
+            openocd.run(f"adapter speed {adapter_speed}")
+            openocd.run(f"log_output \"{log_path}\"")
+            openocd.run(f"debug_level 1")
 
-    with OpenOcdTclRpc(host, port) as openocd:
-        openocd.run(f"adapter speed {adapter_speed}")
-        openocd.run(f"log_output \"{log_path}\"")
-        openocd.run(f"debug_level 1")
+            if (pages.pages_eeprom.__len__() > 0):
+                result |= mik32_eeprom.write_pages(
+                    pages.pages_eeprom, openocd)
+            if (pages.pages_spifi.__len__() > 0):
+                result |= mik32_spifi.write_pages(
+                    pages.pages_spifi, openocd, use_quad_spi=use_quad_spi)
 
-        if (pages.pages_eeprom.__len__() > 0):
-            result |= mik32_eeprom.write_pages(
-                pages.pages_eeprom, openocd)
-        if (pages.pages_spifi.__len__() > 0):
-            result |= mik32_spifi.write_pages(
-                pages.pages_spifi, openocd, use_quad_spi=use_quad_spi)
+            segments_ram = list(filter(
+                lambda segment: (segment.memory is not None) and (segment.memory.type == MemoryType.RAM), segments))
+            if (segments_ram.__len__() > 0):
+                mik32_ram.write_segments(segments_ram, openocd)
+                result |= 0
+            
+            openocd.run(post_action)
+    except ConnectionRefusedError:
+        print("ERROR: The connection to OpenOCD is not established. Check the settings and connection of the debugger")
+    except TclException as e:
+        print(f"ERROR: TclException {e.code} \n {e.msg}")
 
-        segments_ram = list(filter(
-            lambda segment: (segment.memory is not None) and (segment.memory.type == MemoryType.RAM), segments))
-        if (segments_ram.__len__() > 0):
-            mik32_ram.write_segments(segments_ram, openocd)
-            result |= 0
-        
-        openocd.run(post_action)
 
     if proc is not None:
         proc.kill()
@@ -344,6 +349,8 @@ def createParser():
                         default=default_log_path)
     parser.add_argument('--post-action', dest='post_action',
                         default=default_post_action)
+    parser.add_argument('--no-color', dest='no_color',
+                        action='store_true', default=False)
 
     return parser
 
