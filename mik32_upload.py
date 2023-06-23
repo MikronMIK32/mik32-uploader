@@ -24,6 +24,7 @@ openocd_exec_path = os.path.join("openocd", "bin", "openocd.exe")
 openocd_scripts_path = os.path.join("openocd", "share", "openocd", "scripts")
 openocd_interface_path = os.path.join("interface", "ftdi", "m-link.cfg")
 openocd_target_path = os.path.join("target", "mik32.cfg")
+default_log_path = "nul"
 
 adapter_default_speed = 500
 
@@ -55,7 +56,7 @@ class BootMode(Enum):
 
     def __str__(self):
         return self.value
-    
+
     def to_memory_type(self) -> MemoryType:
         if self.value == 'eeprom':
             return MemoryType.EEPROM
@@ -63,7 +64,7 @@ class BootMode(Enum):
             return MemoryType.RAM
         if self.value == 'spifi':
             return MemoryType.SPIFI
-        
+
         return MemoryType.UNKNOWN
 
 
@@ -234,13 +235,15 @@ def filter_segments(segments: List[Segment], memory_type: MemoryType, boot_type:
     )
 
 
-def form_pages(segments: List[Segment], boot_mode = BootMode.UNDEFINED) -> Pages:
+def form_pages(segments: List[Segment], boot_mode=BootMode.UNDEFINED) -> Pages:
     pages_eeprom = segments_to_pages(
-        filter_segments(segments, MemoryType.EEPROM, boot_mode.to_memory_type()),
+        filter_segments(segments, MemoryType.EEPROM,
+                        boot_mode.to_memory_type()),
         128
     )
     pages_spifi = segments_to_pages(
-        filter_segments(segments, MemoryType.SPIFI, boot_mode.to_memory_type()),
+        filter_segments(segments, MemoryType.SPIFI,
+                        boot_mode.to_memory_type()),
         256
     )
 
@@ -260,7 +263,8 @@ def upload_file(
         openocd_target=openocd_target_path,
         adapter_speed=adapter_default_speed,
         is_open_console=False,
-        boot_mode=BootMode.UNDEFINED
+        boot_mode=BootMode.UNDEFINED,
+        log_path=default_log_path,
 ) -> int:
     """
     Write ihex or binary file into MIK32 EEPROM or external flash memory
@@ -286,7 +290,7 @@ def upload_file(
 
     with OpenOcdTclRpc(host, port) as openocd:
         openocd.run(f"adapter speed {adapter_speed}")
-        openocd.run(f"log_output stdout")
+        openocd.run(f"log_output \"{log_path}\"")
         openocd.run(f"debug_level 1")
 
         if (pages.pages_eeprom.__len__() > 0):
@@ -335,6 +339,8 @@ def createParser():
                         action='store_true', default=False)
     parser.add_argument('-b', '--boot-mode', dest='boot_mode', type=BootMode,
                         choices=list(BootMode), default=BootMode.UNDEFINED)
+    parser.add_argument('--log-path', dest='log_path',
+                        default=default_log_path)
 
     return parser
 
@@ -357,7 +363,8 @@ if __name__ == '__main__':
             openocd_target=namespace.openocd_target,
             adapter_speed=namespace.adapter_speed,
             is_open_console=namespace.open_console,
-            boot_mode=namespace.boot_mode
+            boot_mode=namespace.boot_mode,
+            log_path=namespace.log_path,
         )
     else:
         print("Nothing to upload")

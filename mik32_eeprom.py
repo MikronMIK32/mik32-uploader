@@ -203,7 +203,7 @@ def eeprom_check_data_ahb_lite(openocd: OpenOcdTclRpc, words: List[int], offset:
     mem_array = openocd.read_memory(0x01000000 + offset, 32, len(words))
     if len(words) != len(mem_array):
         raise Exception(
-            "Wrong number of words in read_memory output!", flush=True)
+            "Wrong number of words in read_memory output!")
     progress = 0
     if print_progress:
         print("[", end="", flush=True)
