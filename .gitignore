@@ -3,3 +3,6 @@ __pycache__
 openocd
 *.hex
 *.code-workspace
+dist
+build
+mik32_upload.spec
