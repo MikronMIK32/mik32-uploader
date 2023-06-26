@@ -196,6 +196,14 @@ def segments_to_pages(segments: List[Segment], page_size: int) -> Dict[int, List
     return pages
 
 
+class OpenOCDStartupException(Exception):
+    def __init__(self, msg):
+        self.msg = msg
+
+    def __repr__(self):
+        return f"OpenOCD Startup Exception: {self.msg}"
+    
+
 def run_openocd(
     openocd_exec=openocd_exec_path,
     openocd_scripts=openocd_scripts_path,
@@ -286,8 +294,11 @@ def upload_file(
 
     proc: Union[subprocess.Popen, None] = None
     if is_run_openocd:
-        proc = run_openocd(openocd_exec, openocd_scripts,
-                           openocd_interface, openocd_target, is_open_console)
+        try:
+            proc = run_openocd(openocd_exec, openocd_scripts,
+                            openocd_interface, openocd_target, is_open_console)
+        except OSError as e:
+            raise OpenOCDStartupException(e)
     try:
         with OpenOcdTclRpc(host, port) as openocd:
             openocd.run(f"adapter speed {adapter_speed}")
@@ -312,10 +323,9 @@ def upload_file(
         print("ERROR: The connection to OpenOCD is not established. Check the settings and connection of the debugger")
     except TclException as e:
         print(f"ERROR: TclException {e.code} \n {e.msg}")
-
-
-    if proc is not None:
-        proc.kill()
+    finally:
+        if proc is not None:
+            proc.kill()
 
     return result
 
