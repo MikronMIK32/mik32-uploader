@@ -259,6 +259,11 @@ def form_pages(segments: List[Segment], boot_mode=BootMode.UNDEFINED) -> Pages:
     return Pages(pages_eeprom, pages_spifi)
 
 
+adapter_speed_not_supported = [
+    "altera-usb-blaster",
+]
+
+
 def upload_file(
         filename: str,
         host: str = '127.0.0.1',
@@ -301,7 +306,8 @@ def upload_file(
             raise OpenOCDStartupException(e)
     try:
         with OpenOcdTclRpc(host, port) as openocd:
-            openocd.run(f"adapter speed {adapter_speed}")
+            if (all(openocd_interface.find(i) == -1 for i in adapter_speed_not_supported)):
+                openocd.run(f"adapter speed {adapter_speed}")
             openocd.run(f"log_output \"{log_path}\"")
             openocd.run(f"debug_level 1")
 
