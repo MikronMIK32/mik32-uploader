@@ -20,6 +20,7 @@ from mik32_parsers import *
 #     UNDERLINE = '\033[4m'
 
 
+default_openocd_host = '127.0.0.1'
 openocd_exec_path = os.path.join("openocd", "bin", "openocd.exe")
 openocd_scripts_path = os.path.join("openocd", "share", "openocd", "scripts")
 openocd_interface_path = os.path.join("interface", "ftdi", "m-link.cfg")
@@ -202,7 +203,7 @@ class OpenOCDStartupException(Exception):
 
     def __repr__(self):
         return f"OpenOCD Startup Exception: {self.msg}"
-    
+
 
 def run_openocd(
     openocd_exec=openocd_exec_path,
@@ -301,7 +302,7 @@ def upload_file(
     if is_run_openocd:
         try:
             proc = run_openocd(openocd_exec, openocd_scripts,
-                            openocd_interface, openocd_target, is_open_console)
+                               openocd_interface, openocd_target, is_open_console)
         except OSError as e:
             raise OpenOCDStartupException(e)
     try:
@@ -323,7 +324,7 @@ def upload_file(
             if (segments_ram.__len__() > 0):
                 mik32_ram.write_segments(segments_ram, openocd)
                 result |= 0
-            
+
             openocd.run(post_action)
     except ConnectionRefusedError:
         print("ERROR: The connection to OpenOCD is not established. Check the settings and connection of the debugger")
@@ -337,36 +338,111 @@ def upload_file(
 
 
 def createParser():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('filepath', nargs='?')
-    parser.add_argument('--run-openocd', dest='run_openocd',
-                        action='store_true', default=False)
-    parser.add_argument('--use-quad-spi', dest='use_quad_spi',
-                        action='store_true', default=False)
+    parser = argparse.ArgumentParser(
+        prog='mik32_upload.py',
+        description='''Скрипт предназначен для записи программы в ОЗУ, EEPROM и внешнюю flash память, 
+        подключенную по интерфейсу SPIFI'''
+    )
     parser.add_argument(
-        '--openocd-host', dest='openocd_host', default='127.0.0.1')
-    parser.add_argument('--openocd-port', dest='openocd_port',
-                        default=OpenOcdTclRpc.DEFAULT_PORT)
-    parser.add_argument('--adapter-speed', dest='adapter_speed',
-                        default=adapter_default_speed)
+        'filepath', 
+        nargs='?', 
+        help='Путь к файлу прошивки'
+    )
     parser.add_argument(
-        '--openocd-exec', dest='openocd_exec', default=openocd_exec_path)
+        '--run-openocd', 
+        dest='run_openocd',
+        action='store_true', 
+        default=False, 
+        help='Запуск openocd при прошивке МК'
+    )
     parser.add_argument(
-        '--openocd-scripts', dest='openocd_scripts', default=openocd_scripts_path)
+        '--use-quad-spi', 
+        dest='use_quad_spi',
+        action='store_true',
+        default=False, 
+        help='Использование режима QuadSPI при программировании внешней флеш памяти'
+    )
     parser.add_argument(
-        '--openocd-interface', dest='openocd_interface', default=openocd_interface_path)
+        '--openocd-host', 
+        dest='openocd_host', 
+        default=default_openocd_host, 
+        help=f"Адрес для подключения к openocd. По умолчанию: {default_openocd_host}"
+    )
     parser.add_argument(
-        '--openocd-target', dest='openocd_target', default=openocd_target_path)
-    parser.add_argument('--open-console', dest='open_console',
-                        action='store_true', default=False)
-    parser.add_argument('-b', '--boot-mode', dest='boot_mode', type=BootMode,
-                        choices=list(BootMode), default=BootMode.UNDEFINED)
-    parser.add_argument('--log-path', dest='log_path',
-                        default=default_log_path)
-    parser.add_argument('--post-action', dest='post_action',
-                        default=default_post_action)
-    parser.add_argument('--no-color', dest='no_color',
-                        action='store_true', default=False)
+        '--openocd-port', 
+        dest='openocd_port',
+        default=OpenOcdTclRpc.DEFAULT_PORT, 
+        help=f"Порт tcl сервера openocd. По умолчанию: {OpenOcdTclRpc.DEFAULT_PORT}"
+    )
+    parser.add_argument(
+        '--adapter-speed', 
+        dest='adapter_speed',
+        default=adapter_default_speed, 
+        help=f"Скорость отладчика в кГц. По умолчанию: {adapter_default_speed}"
+    )
+    parser.add_argument(
+        '--openocd-exec', 
+        dest='openocd_exec', 
+        default=openocd_exec_path, 
+        help=f"Путь к исполняемому файлу openocd. По умолчанию: {openocd_exec_path}"
+    )
+    parser.add_argument(
+        '--openocd-scripts', 
+        dest='openocd_scripts', 
+        default=openocd_scripts_path, 
+        help=f"Путь к папке scripts. По умолчанию: {openocd_scripts_path}"
+    )
+    parser.add_argument(
+        '--openocd-interface', 
+        dest='openocd_interface', 
+        default=openocd_interface_path, 
+        help='Путь к файлу конфигурации отладчика относительно папки scripts или абсолютный путь. '
+        f"По умолчанию: {openocd_interface_path}"
+    )
+    parser.add_argument(
+        '--openocd-target', 
+        dest='openocd_target', 
+        default=openocd_target_path, 
+        help='Путь к файлу конфигурации целевого контроллера относительно папки scripts. '
+        f"По умолчанию: {openocd_target_path}"
+    )
+    parser.add_argument(
+        '--open-console', 
+        dest='open_console',
+        action='store_true', 
+        default=False, 
+        help='Открывать OpenOCD в отдельной консоли'
+    )
+    parser.add_argument(
+        '-b', 
+        '--boot-mode', 
+        dest='boot_mode', 
+        type=BootMode,
+        choices=list(BootMode), 
+        default=BootMode.UNDEFINED, 
+        help="Выбор типа памяти, который отображается на загрузочную область. "
+        "Если тип не выбран, данные, находящиеся в загрузочной области в hex файле отбрасываются. "
+        f"По умолчанию: {BootMode.UNDEFINED}"
+    )
+    parser.add_argument(
+        '--log-path', 
+        dest='log_path',
+        default=default_log_path,
+        help=f"Путь к файлу журнала. По умолчанию: {default_log_path}"
+    )
+    parser.add_argument(
+        '--post-action', 
+        dest='post_action',
+        default=default_post_action,
+        help=f"Команды OpenOCD, запускаемые после прошивки. По умолчанию: {default_post_action}"
+    )
+    parser.add_argument(
+        '--no-color', 
+        dest='no_color',
+        action='store_true', 
+        default=False,
+        help='Вывод без последовательностей управления терминалом. Временно не используется'
+    )
 
     return parser
 
