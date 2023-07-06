@@ -139,10 +139,9 @@ def eeprom_configure_cycles(openocd: OpenOcdTclRpc, LD=1, R_1=2, R_2=1, CYCEP1=6
 
 def eeprom_global_erase(openocd: OpenOcdTclRpc):
     print("EEPROM global erase...", flush=True)
-    with OpenOcdTclRpc() as openocd:
-        # configure cycles duration
-        eeprom_execute_operation(
-            openocd, EEPROM_Operation.ERASE, EEPROM_AffectedPages.GLOBAL, 0x0, [0] * 32)
+    # configure cycles duration
+    eeprom_execute_operation(
+        openocd, EEPROM_Operation.ERASE, EEPROM_AffectedPages.GLOBAL, 0x0, [0] * 32)
 
 
 def eeprom_global_erase_check(openocd: OpenOcdTclRpc):
@@ -222,6 +221,13 @@ def eeprom_check_data_ahb_lite(openocd: OpenOcdTclRpc, words: List[int], offset:
     return 0
 
 
+def eeprom_check_data(openocd: OpenOcdTclRpc, words: List[int], offset: int, print_progress=True, read_through_apb=False) -> int:
+    if read_through_apb:
+        return eeprom_check_data_apb(openocd, words, offset, print_progress)
+    else:
+        return eeprom_check_data_ahb_lite(openocd, words, offset, print_progress)
+
+
 def write_words(words: List[int], openocd: OpenOcdTclRpc, write_by_word=False, read_through_apb=False, is_resume=True) -> int:
     """
     Write words in MIK32 EEPROM through APB bus
@@ -287,13 +293,17 @@ def write_words(words: List[int], openocd: OpenOcdTclRpc, write_by_word=False, r
     return result
 
 
-def write_pages(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc, read_through_apb=False) -> int:
-    result = 0
-
+def write_pages(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc) -> int:
     openocd.halt()
     eeprom_sysinit(openocd)
     eeprom_global_erase(openocd)
-    # eeprom_global_erase_check(openocd)
+    if eeprom_check_data_ahb_lite(openocd, [0]*2048, 0, False):
+        print("EEPROM global erase failed, try again", flush=True)
+        eeprom_global_erase(openocd)
+
+        if eeprom_check_data_ahb_lite(openocd, [0]*2048, 0, False):
+            print("EEPROM global erase failed", flush=True)
+            return 1
     # configure cycles duration
     eeprom_configure_cycles(openocd, 1, 3, 1, 100000, 1000)
     time.sleep(0.1)
@@ -307,17 +317,10 @@ def write_pages(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc, read_throug
         print(
             f"Writing page {page_offset:#06x}... {(index*100)//pages_offsets.__len__()}%", flush=True)
         eeprom_write_page(openocd, page_offset, page_words)
-        if read_through_apb:
-            result = eeprom_check_data_apb(
-                openocd, page_words, page_offset, False)
-        else:
-            result = eeprom_check_data_ahb_lite(
-                openocd, page_words, page_offset, False)
 
-        if result == 1:
+        if eeprom_check_data(openocd, page_words, page_offset, False):
             print("Page mismatch!", flush=True)
-            return result
+            return 1
 
-    if result == 0:
-        print("EEPROM page recording completed", flush=True)
-    return result
+    print("EEPROM page recording completed", flush=True)
+    return 0
