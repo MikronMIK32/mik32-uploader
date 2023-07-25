@@ -310,10 +310,26 @@ def spifi_send_command(
         return out_list
 
     if direction == SPIFI_Direction.WRITE:
-        for i in range(byte_count):
-            # openocd.write_word(SPIFI_CONFIG_DATA32, data[i+ByteAddress])
-            openocd.write_memory(SPIFI_CONFIG_DATA32, 8, [data[i]])
+        start_time = time.perf_counter()
 
+        openocd.write_memory(0x02003F00, 8, data)
+
+        write_time = time.perf_counter() - start_time
+        print(f"write ram time {write_time:.2f}")
+
+        start_time = time.perf_counter()
+
+        if (byte_count % 4) == 0:
+            for i in range(0, byte_count, 4):
+                # openocd.write_word(SPIFI_CONFIG_DATA32, data[i+ByteAddress])
+                openocd.write_memory(SPIFI_CONFIG_DATA32, 32, [data[i] + data[i+1] * 256 + data[i+2] * 256 * 256 + data[i+3] * 256 * 256 * 256])
+        else:
+            for i in range(byte_count):
+                openocd.write_memory(SPIFI_CONFIG_DATA32, 8, [data[i]])
+
+        write_time = time.perf_counter() - start_time
+        print(f"write memory time {write_time:.2f}")
+    
     return []
 
 
@@ -345,7 +361,7 @@ def spifi_chip_erase(openocd: OpenOcdTclRpc):
 
 
 def spifi_sector_erase(openocd: OpenOcdTclRpc, address: int):
-    print("Erase sector %s..." % hex(address), flush=True)
+    print(f"Erase sector {address:#010x}...", flush=True)
     spifi_send_command(openocd, SECTOR_ERASE_COMMAND,
                        SPIFI_Frameform.OPCODE_3ADDR, SPIFI_Fieldform.ALL_SERIAL, address=address)
 
@@ -487,6 +503,7 @@ def write_pages(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc, use_quad_sp
     address = 0
 
     if (use_quad_spi):
+        print("quad enable")
         spifi_quad_enable(openocd)
     else:
         spifi_quad_disable(openocd)
@@ -496,12 +513,17 @@ def write_pages(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc, use_quad_sp
     for index, page_offset in enumerate(pages_offsets):
         page_bytes = pages[page_offset]
 
+        start_time = time.perf_counter()
+
         if (use_quad_spi):
             spifi_quad_page_program(
                 openocd, page_offset, page_bytes, 256, f"{(index*100)//pages_offsets.__len__()}%")
         else:
             spifi_page_program(openocd, page_offset, page_bytes,
                                256, f"{(index*100)//pages_offsets.__len__()}%")
+            
+        page_program_time = time.perf_counter() - start_time
+        print(f"page program time {page_program_time:.2f}")
 
         result = spifi_read_data(openocd, page_offset, 256, page_bytes)
 

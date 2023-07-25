@@ -2,6 +2,7 @@ import shlex
 import argparse
 import subprocess
 import os
+import time
 from enum import Enum
 from typing import List, Dict, NamedTuple, Union
 from tclrpc import OpenOcdTclRpc, TclException
@@ -212,6 +213,7 @@ def run_openocd(
     openocd_target=openocd_target_path,
     is_open_console=False
 ) -> subprocess.Popen:
+    print(openocd_scripts)
     cmd = shlex.split(
         f"{openocd_exec} -s {openocd_scripts} "
         f"-f {openocd_interface} -f {openocd_target}", posix=False
@@ -312,6 +314,7 @@ def upload_file(
             openocd.run(f"log_output \"{log_path}\"")
             openocd.run(f"debug_level 1")
 
+            start_time = time.perf_counter()
             if (pages.pages_eeprom.__len__() > 0):
                 result |= mik32_eeprom.write_pages(
                     pages.pages_eeprom, openocd)
@@ -324,6 +327,9 @@ def upload_file(
             if (segments_ram.__len__() > 0):
                 mik32_ram.write_segments(segments_ram, openocd)
                 result |= 0
+
+            write_time = time.perf_counter() - start_time
+            print(f"All segments written in {write_time:.2f} seconds")
 
             openocd.run(post_action)
     except ConnectionRefusedError:
@@ -430,6 +436,13 @@ def createParser():
         default=default_log_path,
         help=f"Путь к файлу журнала. По умолчанию: {default_log_path}"
     )
+    # parser.add_argument(
+    #     '--log-terminal', 
+    #     dest='log_termir',
+    #     action='store_true', 
+    #     default=False,
+    #     help='Вывод журнала в консоль'
+    # )
     parser.add_argument(
         '--post-action', 
         dest='post_action',
