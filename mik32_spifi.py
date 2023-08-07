@@ -247,6 +247,10 @@ def spifi_init(openocd: OpenOcdTclRpc):
 
     spifi_init_periphery(openocd)
 
+    control = openocd.read_word(SPIFI_CONFIG_CTRL)
+    control |= SPIFI_CONFIG_CTRL_DMAEN_M
+    openocd.write_word(SPIFI_CONFIG_CTRL, control)
+
     time.sleep(INIT_DELAY)
 
 
@@ -319,28 +323,29 @@ def spifi_send_command(
         data: List[int] = [],
         dma: Union[DMA, None] = None
 ) -> List[int]:
-    if dma is not None:
-        control = openocd.read_word(SPIFI_CONFIG_CTRL)
-        control |= SPIFI_CONFIG_CTRL_DMAEN_M
-        openocd.write_word(SPIFI_CONFIG_CTRL, control)
-
-        # start_time = time.perf_counter()
-
+    if dma is not None and direction == SPIFI_Direction.WRITE:
         openocd.write_memory(0x02003F00, 8, data)
-
-        # write_time = time.perf_counter() - start_time
-        # print(f"write ram time {write_time:.2f}")
 
         dma.channels[0].start(
             0x02003F00,
             SPIFI_CONFIG_DATA32,
             255
         )
+    elif dma is not None and direction == SPIFI_Direction.READ:
+        dma.channels[1].start(
+            SPIFI_CONFIG_DATA32,
+            0x02003F00,
+            255
+        )
 
-    openocd.write_word(SPIFI_CONFIG_ADDR, address)
-    openocd.write_word(SPIFI_CONFIG_IDATA, idata)
-    openocd.write_word(SPIFI_CONFIG_CLIMIT, cache_limit)
-    spifi_intrq_clear(openocd)
+    if address != 0:
+        openocd.write_word(SPIFI_CONFIG_ADDR, address)
+    if idata != 0:
+        openocd.write_word(SPIFI_CONFIG_IDATA, idata)
+    if cache_limit != 0:
+        openocd.write_word(SPIFI_CONFIG_CLIMIT, cache_limit)
+    
+    # spifi_intrq_clear(openocd)
     openocd.write_word(SPIFI_CONFIG_CMD, (cmd << SPIFI_CONFIG_CMD_OPCODE_S) |
                        (frameform.value << SPIFI_CONFIG_CMD_FRAMEFORM_S) |
                        (fieldform.value << SPIFI_CONFIG_CMD_FIELDFORM_S) |
@@ -351,27 +356,27 @@ def spifi_send_command(
 
     if direction == SPIFI_Direction.READ:
         out_list = []
-        for i in range(byte_count):
-            out_list.append(openocd.read_memory(SPIFI_CONFIG_DATA32, 8, 1)[0])
-        return out_list
+        if dma is not None:
+            dma.dma_wait(dma.channels[1], 0.1)
+            out_list.extend(openocd.read_memory(0x02003F00, 8, byte_count))
+
+            return out_list
+        else:
+            for i in range(byte_count):
+                out_list.append(openocd.read_memory(SPIFI_CONFIG_DATA32, 8, 1)[0])
+            return out_list
 
     if direction == SPIFI_Direction.WRITE:
-        # start_time = time.perf_counter()
-
         if dma is not None:
             dma.dma_wait(dma.channels[0], 0.1)
         else:
             if (byte_count % 4) == 0:
                 for i in range(0, byte_count, 4):
-                    # openocd.write_word(SPIFI_CONFIG_DATA32, data[i+ByteAddress])
                     openocd.write_memory(SPIFI_CONFIG_DATA32, 32, [
                                         data[i] + data[i+1] * 256 + data[i+2] * 256 * 256 + data[i+3] * 256 * 256 * 256])
             else:
                 for i in range(byte_count):
                     openocd.write_memory(SPIFI_CONFIG_DATA32, 8, [data[i]])
-
-        # write_time = time.perf_counter() - start_time
-        # print(f"write memory time {write_time:.2f}")
 
     return []
 
@@ -409,26 +414,21 @@ def spifi_sector_erase(openocd: OpenOcdTclRpc, address: int):
                        SPIFI_Frameform.OPCODE_3ADDR, SPIFI_Fieldform.ALL_SERIAL, address=address)
 
 
-def spifi_read_data(openocd: OpenOcdTclRpc, address: int, byte_count: int, bin_data: List[int]) -> int:
+def spifi_read_data(openocd: OpenOcdTclRpc, address: int, byte_count: int, bin_data: List[int], dma: Union[DMA, None] = None) -> int:
     read_data: List[int] = []
 
-    spifi_init_memory(openocd)
-    read_data = openocd.read_memory(0x80000000 + address, 8, 1)
-    read_data = openocd.read_memory(0x80000000 + address, 8, 256)
-
-    # read_data = spifi_send_command(openocd, READ_DATA_COMMAND, SPIFI_Frameform.OPCODE_3ADDR,
-    #                                SPIFI_Fieldform.ALL_SERIAL, byte_count=byte_count, address=address)
+    read_data = spifi_send_command(openocd, READ_DATA_COMMAND, SPIFI_Frameform.OPCODE_3ADDR, SPIFI_Fieldform.ALL_SERIAL, byte_count=byte_count, address=address, dma=dma)
 
     for i in range(byte_count):
         if read_data[i] != bin_data[i]:
             print(
                 f"DATA[{i+address}] = {read_data[i]:#0x} expect {bin_data[i]:#0x}", flush=True)
             
-            spifi_init_periphery(openocd)
-            read_periph = spifi_send_command(openocd, READ_DATA_COMMAND, SPIFI_Frameform.OPCODE_3ADDR,
-                                   SPIFI_Fieldform.ALL_SERIAL, byte_count=1, address=(i+address))
-            print(
-                f"DATA[{i+address}] = {read_periph[0]:#0x} expect {bin_data[i]:#0x}", flush=True)
+            # spifi_init_periphery(openocd)
+            # read_periph = spifi_send_command(openocd, READ_DATA_COMMAND, SPIFI_Frameform.OPCODE_3ADDR,
+            #                        SPIFI_Fieldform.ALL_SERIAL, byte_count=1, address=(i+address))
+            # print(
+            #     f"DATA[{i+address}] = {read_periph[0]:#0x} expect {bin_data[i]:#0x}", flush=True)
 
             return 1
 
@@ -446,8 +446,6 @@ def spifi_page_program(
     print(f"Writing page {ByteAddress:#010x}... {progress}", flush=True)
     if byte_count > 256:
         raise Exception("Byte count more than 256")
-    
-    spifi_init_periphery(openocd)
 
     spifi_write_enable(openocd)
     spifi_send_command(openocd, PAGE_PROGRAM_COMMAND, SPIFI_Frameform.OPCODE_3ADDR,
@@ -569,17 +567,36 @@ def write_pages(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc, use_quad_sp
 
     dma.channels[0].read_mode = ChannelMode.MEMORY
     dma.channels[0].read_increment = ChannelIncrement.ENABLE
-    dma.channels[0].read_size = ChannelSize.BYTE
-    dma.channels[0].read_burst_size = 0
+    dma.channels[0].read_size = ChannelSize.WORD
+    dma.channels[0].read_burst_size = 2
     dma.channels[0].read_request = ChannelRequest.SPIFI_REQUEST
     dma.channels[0].read_ack = ChannelAck.DISABLE
 
     dma.channels[0].write_mode = ChannelMode.PERIPHERY
     dma.channels[0].write_increment = ChannelIncrement.DISABLE
-    dma.channels[0].write_size = ChannelSize.BYTE
-    dma.channels[0].write_burst_size = 0
+    dma.channels[0].write_size = ChannelSize.WORD
+    dma.channels[0].write_burst_size = 2
     dma.channels[0].write_request = ChannelRequest.SPIFI_REQUEST
     dma.channels[0].write_ack = ChannelAck.DISABLE
+
+    dma.channels[1].write_buffer = 0
+
+    dma.channels[1].channel = ChannelIndex.CHANNEL_1
+    dma.channels[1].priority = ChannelPriority.VERY_HIGH
+
+    dma.channels[1].write_mode = ChannelMode.MEMORY
+    dma.channels[1].write_increment = ChannelIncrement.ENABLE
+    dma.channels[1].write_size = ChannelSize.WORD
+    dma.channels[1].write_burst_size = 2
+    dma.channels[1].write_request = ChannelRequest.SPIFI_REQUEST
+    dma.channels[1].write_ack = ChannelAck.DISABLE
+
+    dma.channels[1].read_mode = ChannelMode.PERIPHERY
+    dma.channels[1].read_increment = ChannelIncrement.DISABLE
+    dma.channels[1].read_size = ChannelSize.WORD
+    dma.channels[1].read_burst_size = 2
+    dma.channels[1].read_request = ChannelRequest.SPIFI_REQUEST
+    dma.channels[1].read_ack = ChannelAck.DISABLE
 
     if use_chip_erase:
         spifi_erase(openocd, EraseType.CHIP_ERASE)
@@ -599,8 +616,6 @@ def write_pages(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc, use_quad_sp
     for index, page_offset in enumerate(pages_offsets):
         page_bytes = pages[page_offset]
 
-        # start_time = time.perf_counter()
-
         if (use_quad_spi):
             spifi_quad_page_program(
                 openocd, page_offset, page_bytes, 256, f"{(index*100)//pages_offsets.__len__()}%")
@@ -608,13 +623,7 @@ def write_pages(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc, use_quad_sp
             spifi_page_program(openocd, page_offset, page_bytes,
                                256, f"{(index*100)//pages_offsets.__len__()}%", dma=dma)
 
-        # page_program_time = time.perf_counter() - start_time
-        # print(f"page program time {page_program_time:.2f}")
-
-        # start_time = time.perf_counter()
-        result = spifi_read_data(openocd, page_offset, 256, page_bytes)
-        # page_program_time = time.perf_counter() - start_time
-        # print(f"page check time {page_program_time:.2f}")
+        result = spifi_read_data(openocd, page_offset, 256, page_bytes, dma=dma)
 
         if result == 1:
             print("Data error")
