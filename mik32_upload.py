@@ -51,6 +51,11 @@ class MemoryType(Enum):
     UNKNOWN = -1
 
 
+memory_page_size = {
+    MemoryType.EEPROM : 128,
+    MemoryType.SPIFI : 256
+}
+
 class BootMode(Enum):
     UNDEFINED = 'undefined'
     EEPROM = 'eeprom'
@@ -251,12 +256,12 @@ def form_pages(segments: List[Segment], boot_mode=BootMode.UNDEFINED) -> Pages:
     pages_eeprom = segments_to_pages(
         filter_segments(segments, MemoryType.EEPROM,
                         boot_mode.to_memory_type()),
-        128
+        memory_page_size[MemoryType.EEPROM]
     )
     pages_spifi = segments_to_pages(
         filter_segments(segments, MemoryType.SPIFI,
                         boot_mode.to_memory_type()),
-        256
+        memory_page_size[MemoryType.SPIFI]
     )
 
     return Pages(pages_eeprom, pages_spifi)
@@ -314,22 +319,30 @@ def upload_file(
             openocd.run(f"log_output \"{log_path}\"")
             openocd.run(f"debug_level 1")
 
-            start_time = time.perf_counter()
             if (pages.pages_eeprom.__len__() > 0):
+                start_time = time.perf_counter()
+
                 result |= mik32_eeprom.write_pages(
                     pages.pages_eeprom, openocd)
+                
+                write_time = time.perf_counter() - start_time
+                write_size = pages.pages_eeprom.__len__() * memory_page_size[MemoryType.EEPROM]
+                print(f"Wrote {write_size} bytes in {write_time:.2f} seconds (effective {(write_size/(write_time*1024)):.1f} kbyte/s)")
             if (pages.pages_spifi.__len__() > 0):
+                start_time = time.perf_counter()
+
                 result |= mik32_spifi.write_pages(
                     pages.pages_spifi, openocd, use_quad_spi=use_quad_spi)
+                
+                write_time = time.perf_counter() - start_time
+                write_size = pages.pages_spifi.__len__() * memory_page_size[MemoryType.SPIFI]
+                print(f"Wrote {write_size} bytes in {write_time:.2f} seconds (effective {(write_size/(write_time*1024)):.1f} kbyte/s)")
 
             segments_ram = list(filter(
                 lambda segment: (segment.memory is not None) and (segment.memory.type == MemoryType.RAM), segments))
             if (segments_ram.__len__() > 0):
                 mik32_ram.write_segments(segments_ram, openocd)
                 result |= 0
-
-            write_time = time.perf_counter() - start_time
-            print(f"All segments written in {write_time:.2f} seconds")
 
             openocd.run(post_action)
     except ConnectionRefusedError:

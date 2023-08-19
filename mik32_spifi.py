@@ -511,7 +511,14 @@ def spifi_write_file(bytes: List[int], openocd: OpenOcdTclRpc, is_resume=True):
     return 0
 
 
-def spifi_quad_page_program(openocd: OpenOcdTclRpc, ByteAddress: int, data: List[int], byte_count: int, progress: str = ""):
+def spifi_quad_page_program(
+    openocd: OpenOcdTclRpc,
+    ByteAddress: int,
+    data: List[int],
+    byte_count: int,
+    progress: str = "",
+    dma: Union[DMA, None] = None
+):
     print(f"Writing page {ByteAddress:#010x}... {progress}", flush=True)
     if byte_count > 256:
         raise Exception("Byte count more than 256")
@@ -519,7 +526,7 @@ def spifi_quad_page_program(openocd: OpenOcdTclRpc, ByteAddress: int, data: List
     spifi_write_enable(openocd)
     spifi_send_command(openocd, QUAD_PAGE_PROGRAM_COMMAND, SPIFI_Frameform.OPCODE_3ADDR,
                        SPIFI_Fieldform.DATA_PARALLEL, byte_count=byte_count, address=ByteAddress,
-                       idata=0, cache_limit=0, direction=SPIFI_Direction.WRITE, data=data)
+                       idata=0, cache_limit=0, direction=SPIFI_Direction.WRITE, data=data, dma=dma)
     spifi_wait_busy(openocd)
 
 
@@ -618,7 +625,7 @@ def write_pages(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc, use_quad_sp
 
         if (use_quad_spi):
             spifi_quad_page_program(
-                openocd, page_offset, page_bytes, 256, f"{(index*100)//pages_offsets.__len__()}%")
+                openocd, page_offset, page_bytes, 256, f"{(index*100)//pages_offsets.__len__()}%", dma=dma)
         else:
             spifi_page_program(openocd, page_offset, page_bytes,
                                256, f"{(index*100)//pages_offsets.__len__()}%", dma=dma)
