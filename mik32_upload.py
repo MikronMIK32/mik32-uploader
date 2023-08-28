@@ -320,7 +320,7 @@ def upload_file(
             openocd.run(f"log_output \"{log_path}\"")
             openocd.run(f"debug_level 1")
 
-            mik32_pm.pm_init()
+            mik32_pm.pm_init(openocd)
 
             if (pages.pages_eeprom.__len__() > 0):
                 start_time = time.perf_counter()
