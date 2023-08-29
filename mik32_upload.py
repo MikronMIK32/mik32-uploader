@@ -11,6 +11,7 @@ import mik32_spifi
 import mik32_ram
 import mik32_pm
 from mik32_parsers import *
+import logging, sys
 
 
 # class bcolors(Enum):
@@ -309,18 +310,30 @@ def upload_file(
     proc: Union[subprocess.Popen, None] = None
     if is_run_openocd:
         try:
+            logging.debug("OpenOCD try start!")
+
             proc = run_openocd(openocd_exec, openocd_scripts,
                                openocd_interface, openocd_target, is_open_console)
+            
+            logging.debug("OpenOCD started!")
         except OSError as e:
             raise OpenOCDStartupException(e)
     try:
         with OpenOcdTclRpc(host, port) as openocd:
+            test_connection()
+
+            logging.debug("OpenOCD connection tested!")
+
             if (all(openocd_interface.find(i) == -1 for i in adapter_speed_not_supported)):
                 openocd.run(f"adapter speed {adapter_speed}")
             openocd.run(f"log_output \"{log_path}\"")
             openocd.run(f"debug_level 1")
 
+            logging.debug("OpenOCD configured!")
+
             mik32_pm.pm_init(openocd)
+
+            logging.debug("PM configured!")
 
             if (pages.pages_eeprom.__len__() > 0):
                 start_time = time.perf_counter()
@@ -477,6 +490,8 @@ def createParser():
 
 
 if __name__ == '__main__':
+    logging.basicConfig(stream=sys.stderr, level=logging.DEBUG)
+
     parser = createParser()
     namespace = parser.parse_args()
 

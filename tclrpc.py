@@ -51,6 +51,7 @@ class OpenOcdTclRpc:
 
     def __enter__(self):
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.sock.settimeout(10.0)
         self.sock.connect((self.host, self.port))
         return self
 
