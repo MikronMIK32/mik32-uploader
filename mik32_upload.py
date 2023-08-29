@@ -1,5 +1,6 @@
 import shlex
 import argparse
+import socket
 import subprocess
 import os
 import time
@@ -39,7 +40,12 @@ supported_text_formats = [".hex"]
 def test_connection():
     output = ""
     with OpenOcdTclRpc() as openocd:
-        output = openocd.run("capture \"reg\"")
+        try:
+            output = openocd.run("capture \"reg\"")
+        except OSError:
+            logging.debug("Test connection timed out, try again")
+            output = openocd.run("capture \"reg\"")
+            
 
     if output == "":
         raise Exception("ERROR: no regs found, check MCU connection")
@@ -320,10 +326,6 @@ def upload_file(
             raise OpenOCDStartupException(e)
     try:
         with OpenOcdTclRpc(host, port) as openocd:
-            test_connection()
-
-            logging.debug("OpenOCD connection tested!")
-
             if (all(openocd_interface.find(i) == -1 for i in adapter_speed_not_supported)):
                 openocd.run(f"adapter speed {adapter_speed}")
             openocd.run(f"log_output \"{log_path}\"")
@@ -490,7 +492,7 @@ def createParser():
 
 
 if __name__ == '__main__':
-    logging.basicConfig(stream=sys.stderr, level=logging.DEBUG)
+    logging.basicConfig(stream=sys.stderr, level=logging.INFO)
 
     parser = createParser()
     namespace = parser.parse_args()
