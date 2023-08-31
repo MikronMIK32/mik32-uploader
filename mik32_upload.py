@@ -317,8 +317,9 @@ def upload_file(
 
             proc = run_openocd(openocd_exec, openocd_scripts,
                                openocd_interface, openocd_target, is_open_console)
-            
+
             logging.debug("OpenOCD started!")
+            
         except OSError as e:
             raise OpenOCDStartupException(e)
     try:
