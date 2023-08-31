@@ -226,11 +226,8 @@ def run_openocd(
     openocd_target=openocd_target_path,
     is_open_console=False
 ) -> subprocess.Popen:
-    print(openocd_scripts)
-    cmd = shlex.split(
-        f"{openocd_exec} -s {openocd_scripts} "
-        f"-f {openocd_interface} -f {openocd_target}", posix=False
-    )
+    cmd = [openocd_exec, "-s", openocd_scripts,
+        "-f", openocd_interface, "-f", openocd_target]
 
     creation_flags = subprocess.SW_HIDE
     if is_open_console:
