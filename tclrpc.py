@@ -51,7 +51,15 @@ class OpenOcdTclRpc:
 
     def __enter__(self):
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.sock.connect((self.host, self.port))
+        self.sock.settimeout(5.0)
+        try:
+            self.sock.connect((self.host, self.port))
+        except socket.timeout:
+            logger.debug("Test connection timed out, try again")
+            self.sock.close()
+            self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.sock.settimeout(5.0)
+            self.sock.connect((self.host, self.port))
         return self
 
     def __exit__(self, *args):

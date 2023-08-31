@@ -1,5 +1,6 @@
 import shlex
 import argparse
+import socket
 import subprocess
 import os
 import time
@@ -9,7 +10,9 @@ from tclrpc import OpenOcdTclRpc, TclException
 import mik32_eeprom
 import mik32_spifi
 import mik32_ram
+import mik32_pm
 from mik32_parsers import *
+import logging, sys
 
 
 # class bcolors(Enum):
@@ -37,7 +40,12 @@ supported_text_formats = [".hex"]
 def test_connection():
     output = ""
     with OpenOcdTclRpc() as openocd:
-        output = openocd.run("capture \"reg\"")
+        try:
+            output = openocd.run("capture \"reg\"")
+        except OSError:
+            logging.debug("Test connection timed out, try again")
+            output = openocd.run("capture \"reg\"")
+            
 
     if output == "":
         raise Exception("ERROR: no regs found, check MCU connection")
@@ -218,11 +226,8 @@ def run_openocd(
     openocd_target=openocd_target_path,
     is_open_console=False
 ) -> subprocess.Popen:
-    print(openocd_scripts)
-    cmd = shlex.split(
-        f"{openocd_exec} -s {openocd_scripts} "
-        f"-f {openocd_interface} -f {openocd_target}", posix=False
-    )
+    cmd = [openocd_exec, "-s", openocd_scripts,
+        "-f", openocd_interface, "-f", openocd_target]
 
     creation_flags = subprocess.SW_HIDE
     if is_open_console:
@@ -308,9 +313,13 @@ def upload_file(
     proc: Union[subprocess.Popen, None] = None
     if is_run_openocd:
         try:
+            logging.debug("OpenOCD try start!")
+
             proc = run_openocd(openocd_exec, openocd_scripts,
                                openocd_interface, openocd_target, is_open_console)
-            print("OpenOCD successfully started!", flush=True)
+
+            logging.debug("OpenOCD started!")
+            
         except OSError as e:
             raise OpenOCDStartupException(e)
     try:
@@ -319,6 +328,12 @@ def upload_file(
                 openocd.run(f"adapter speed {adapter_speed}")
             openocd.run(f"log_output \"{log_path}\"")
             openocd.run(f"debug_level 1")
+
+            logging.debug("OpenOCD configured!")
+
+            mik32_pm.pm_init(openocd)
+
+            logging.debug("PM configured!")
 
             if (pages.pages_eeprom.__len__() > 0):
                 start_time = time.perf_counter()
@@ -475,6 +490,8 @@ def createParser():
 
 
 if __name__ == '__main__':
+    logging.basicConfig(stream=sys.stderr, level=logging.INFO)
+
     parser = createParser()
     namespace = parser.parse_args()
 
