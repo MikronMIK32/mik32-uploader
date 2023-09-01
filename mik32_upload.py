@@ -219,15 +219,25 @@ class OpenOCDStartupException(Exception):
         return f"OpenOCD Startup Exception: {self.msg}"
 
 
+adapter_speed_not_supported = [
+    "altera-usb-blaster",
+]
+
 def run_openocd(
     openocd_exec=openocd_exec_path,
     openocd_scripts=openocd_scripts_path,
     openocd_interface=openocd_interface_path,
     openocd_target=openocd_target_path,
+    adapter_speed=adapter_default_speed,
     is_open_console=False
 ) -> subprocess.Popen:
-    cmd = [openocd_exec, "-s", openocd_scripts,
-        "-f", openocd_interface, "-f", openocd_target]
+    cmd = [openocd_exec, "-s", openocd_scripts, "-f", openocd_interface]
+
+    if (all(openocd_interface.find(i) == -1 for i in adapter_speed_not_supported)):
+        cmd.extend(["-c", f"adapter speed {adapter_speed}"])
+    
+    cmd.extend(["-f", openocd_target])
+    
 
     creation_flags = subprocess.SW_HIDE
     if is_open_console:
@@ -272,11 +282,6 @@ def form_pages(segments: List[Segment], boot_mode=BootMode.UNDEFINED) -> Pages:
     return Pages(pages_eeprom, pages_spifi)
 
 
-adapter_speed_not_supported = [
-    "altera-usb-blaster",
-]
-
-
 def upload_file(
         filename: str,
         host: str = '127.0.0.1',
@@ -315,8 +320,8 @@ def upload_file(
         try:
             logging.debug("OpenOCD try start!")
 
-            proc = run_openocd(openocd_exec, openocd_scripts,
-                               openocd_interface, openocd_target, is_open_console)
+            proc = run_openocd(openocd_exec, openocd_scripts, openocd_interface, 
+                               openocd_target, adapter_speed, is_open_console)
 
             logging.debug("OpenOCD started!")
             
@@ -324,8 +329,6 @@ def upload_file(
             raise OpenOCDStartupException(e)
     try:
         with OpenOcdTclRpc(host, port) as openocd:
-            if (all(openocd_interface.find(i) == -1 for i in adapter_speed_not_supported)):
-                openocd.run(f"adapter speed {adapter_speed}")
             openocd.run(f"log_output \"{log_path}\"")
             openocd.run(f"debug_level 1")
 
