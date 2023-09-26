@@ -131,7 +131,7 @@ def pm_init(openocd: OpenOcdTclRpc):
         PM_CLOCK_APB_M_WU_M
     )
     # 0x89
-    APB_P_default = 0
+    APB_P_default = PM_CLOCK_APB_P_GPIO_2_M
     # 0x00
 
     openocd.halt()

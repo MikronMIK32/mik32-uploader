@@ -7,6 +7,7 @@ import time
 from enum import Enum
 from typing import List, Dict, NamedTuple, Union
 from tclrpc import OpenOcdTclRpc, TclException
+from mik32_gpio import MIK_VERSION, gpio_init, gpio_deinit
 import mik32_eeprom
 import mik32_spifi
 import mik32_ram
@@ -219,25 +220,15 @@ class OpenOCDStartupException(Exception):
         return f"OpenOCD Startup Exception: {self.msg}"
 
 
-adapter_speed_not_supported = [
-    "altera-usb-blaster",
-]
-
 def run_openocd(
     openocd_exec=openocd_exec_path,
     openocd_scripts=openocd_scripts_path,
     openocd_interface=openocd_interface_path,
     openocd_target=openocd_target_path,
-    adapter_speed=adapter_default_speed,
     is_open_console=False
 ) -> subprocess.Popen:
-    cmd = [openocd_exec, "-s", openocd_scripts, "-f", openocd_interface]
-
-    if (all(openocd_interface.find(i) == -1 for i in adapter_speed_not_supported)):
-        cmd.extend(["-c", f"adapter speed {adapter_speed}"])
-    
-    cmd.extend(["-f", openocd_target])
-    
+    cmd = [openocd_exec, "-s", openocd_scripts,
+        "-f", openocd_interface, "-f", openocd_target]
 
     creation_flags = subprocess.SW_HIDE
     if is_open_console:
@@ -282,6 +273,11 @@ def form_pages(segments: List[Segment], boot_mode=BootMode.UNDEFINED) -> Pages:
     return Pages(pages_eeprom, pages_spifi)
 
 
+adapter_speed_not_supported = [
+    "altera-usb-blaster",
+]
+
+
 def upload_file(
         filename: str,
         host: str = '127.0.0.1',
@@ -296,13 +292,16 @@ def upload_file(
         is_open_console=False,
         boot_mode=BootMode.UNDEFINED,
         log_path=default_log_path,
-        post_action=default_post_action
+        post_action=default_post_action,
+        mik_version=MIK_VERSION.MIK32V2
 ) -> int:
     """
     Write ihex or binary file into MIK32 EEPROM or external flash memory
     @filename: full path to the file with hex or bin file format
     @return: return 0 if successful, 1 if failed
     """
+
+    print(f"Using {mik_version.value}")
 
     result = 0
 
@@ -320,8 +319,8 @@ def upload_file(
         try:
             logging.debug("OpenOCD try start!")
 
-            proc = run_openocd(openocd_exec, openocd_scripts, openocd_interface, 
-                               openocd_target, adapter_speed, is_open_console)
+            proc = run_openocd(openocd_exec, openocd_scripts,
+                               openocd_interface, openocd_target, is_open_console)
 
             logging.debug("OpenOCD started!")
             
@@ -329,6 +328,8 @@ def upload_file(
             raise OpenOCDStartupException(e)
     try:
         with OpenOcdTclRpc(host, port) as openocd:
+            if (all(openocd_interface.find(i) == -1 for i in adapter_speed_not_supported)):
+                openocd.run(f"adapter speed {adapter_speed}")
             openocd.run(f"log_output \"{log_path}\"")
             openocd.run(f"debug_level 1")
 
@@ -348,6 +349,7 @@ def upload_file(
                 write_size = pages.pages_eeprom.__len__() * memory_page_size[MemoryType.EEPROM]
                 print(f"Wrote {write_size} bytes in {write_time:.2f} seconds (effective {(write_size/(write_time*1024)):.1f} kbyte/s)")
             if (pages.pages_spifi.__len__() > 0):
+                gpio_init(openocd, mik_version)
                 start_time = time.perf_counter()
 
                 result |= mik32_spifi.write_pages(
@@ -356,6 +358,7 @@ def upload_file(
                 write_time = time.perf_counter() - start_time
                 write_size = pages.pages_spifi.__len__() * memory_page_size[MemoryType.SPIFI]
                 print(f"Wrote {write_size} bytes in {write_time:.2f} seconds (effective {(write_size/(write_time*1024)):.1f} kbyte/s)")
+                gpio_deinit(openocd, mik_version)
 
             segments_ram = list(filter(
                 lambda segment: (segment.memory is not None) and (segment.memory.type == MemoryType.RAM), segments))
@@ -488,7 +491,16 @@ def createParser():
         default=False,
         help='Вывод без последовательностей управления терминалом. Временно не используется'
     )
-
+    parser.add_argument(
+        '-t', 
+        '--mcu-type', 
+        dest='mcu_type', 
+        type=MIK_VERSION,
+        choices=list(MIK_VERSION), 
+        default=MIK_VERSION.MIK32V2, 
+        help="Выбор микроконтроллера. "
+        f"По умолчанию: {MIK_VERSION.MIK32V2}"
+    )
     return parser
 
 
@@ -514,6 +526,7 @@ if __name__ == '__main__':
             boot_mode=namespace.boot_mode,
             log_path=namespace.log_path,
             post_action=namespace.post_action,
+            mik_version=namespace.mcu_type
         )
     else:
         print("Nothing to upload")

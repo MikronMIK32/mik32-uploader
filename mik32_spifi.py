@@ -278,7 +278,7 @@ def spifi_send_command(
         data: List[int] = [],
         dma: Union[DMA, None] = None
 ) -> List[int]:
-    if dma is not None and direction == SPIFI_Direction.WRITE:
+    if (dma is not None) and (direction == SPIFI_Direction.WRITE):
         openocd.write_memory(0x02003F00, 8, data)
 
         dma.channels[0].start(
@@ -286,28 +286,36 @@ def spifi_send_command(
             SPIFI_CONFIG_DATA32,
             255
         )
-    elif dma is not None and direction == SPIFI_Direction.READ:
+    elif (dma is not None) and (direction == SPIFI_Direction.READ):
         dma.channels[1].start(
             SPIFI_CONFIG_DATA32,
             0x02003F00,
             255
         )
 
-    if address != 0:
-        openocd.write_word(SPIFI_CONFIG_ADDR, address)
-    if idata != 0:
-        openocd.write_word(SPIFI_CONFIG_IDATA, idata)
-    if cache_limit != 0:
-        openocd.write_word(SPIFI_CONFIG_CLIMIT, cache_limit)
+    openocd.write_word(SPIFI_CONFIG_ADDR, address)
+    # if idata != 0:
+    #     openocd.write_word(SPIFI_CONFIG_IDATA, idata)
+    # if cache_limit != 0:
+    #     openocd.write_word(SPIFI_CONFIG_CLIMIT, cache_limit)
     
-    # spifi_intrq_clear(openocd)
-    openocd.write_word(SPIFI_CONFIG_CMD, (cmd << SPIFI_CONFIG_CMD_OPCODE_S) |
+    # # spifi_intrq_clear(openocd)
+    # openocd.write_word(SPIFI_CONFIG_CMD, (cmd << SPIFI_CONFIG_CMD_OPCODE_S) |
+    #                    (frameform.value << SPIFI_CONFIG_CMD_FRAMEFORM_S) |
+    #                    (fieldform.value << SPIFI_CONFIG_CMD_FIELDFORM_S) |
+    #                    (byte_count << SPIFI_CONFIG_CMD_DATALEN_S) |
+    #                    (idata_length << SPIFI_CONFIG_CMD_INTLEN_S) |
+    #                    (direction.value << SPIFI_CONFIG_CMD_DOUT_S))
+    # # spifi_wait_intrq_timeout(openocd, "Timeout executing write enable command")
+
+    cmd_write_value = ((cmd << SPIFI_CONFIG_CMD_OPCODE_S) |
                        (frameform.value << SPIFI_CONFIG_CMD_FRAMEFORM_S) |
                        (fieldform.value << SPIFI_CONFIG_CMD_FIELDFORM_S) |
                        (byte_count << SPIFI_CONFIG_CMD_DATALEN_S) |
                        (idata_length << SPIFI_CONFIG_CMD_INTLEN_S) |
                        (direction.value << SPIFI_CONFIG_CMD_DOUT_S))
-    # spifi_wait_intrq_timeout(openocd, "Timeout executing write enable command")
+
+    openocd.write_memory(SPIFI_CONFIG_CMD, 32, [cmd_write_value, address, idata, cache_limit])
 
     if direction == SPIFI_Direction.READ:
         out_list = []
@@ -519,6 +527,10 @@ def write_pages(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc, use_quad_sp
     openocd.halt()
     spifi_init(openocd)
 
+    JEDEC_ID = spifi_send_command(openocd, 0x9F, SPIFI_Frameform.OPCODE_NOADDR, SPIFI_Fieldform.ALL_SERIAL, 3)
+
+    print(f"JEDEC_ID {JEDEC_ID[0]:02x} {JEDEC_ID[1]:02x} {JEDEC_ID[2]:02x}")
+
     dma = DMA(openocd)
     dma.init()
 
@@ -565,10 +577,16 @@ def write_pages(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc, use_quad_sp
     else:
         spifi_erase(openocd, EraseType.SECTOR_ERASE,
                     get_segments_list(list(pages), 4*1024))
-    address = 0
+
+        # for addr in range(0, 4096*2, 256):
+        #     result = spifi_read_data(openocd, addr, 256, [0xFF]*256, dma=dma)
+
+        #     if result == 1:
+        #         print("Data error")
+        #         return result
 
     if (use_quad_spi):
-        print("quad enable")
+        print("Quad Enable")
         spifi_quad_enable(openocd)
     else:
         spifi_quad_disable(openocd)
