@@ -1,6 +1,7 @@
 import re
 import socket
 from logging import getLogger
+from typing import List
 logger = getLogger(__name__)
 
 class TclException(Exception):
@@ -120,7 +121,7 @@ class OpenOcdTclRpc:
         """Write the word on addr and raise an error if it returns an error"""
         return self.run(f"capture \"mww {addr:#0x} {word:#0x}\"")
     
-    def write_memory(self, address:int, width:int, data:list[int]):
+    def write_memory(self, address:int, width:int, data:List[int]):
         """This function provides an efficient way to write to the target memory 
         from a Tcl script
         
@@ -129,7 +130,7 @@ class OpenOcdTclRpc:
         width ... memory access bit size, can be 8, 16, 32 or 64
         
         data ... Tcl list with the elements to write """
-        data_words: list[str] = []
+        data_words: List[str] = []
         for word in data:
             data_words.append(str(f"{word:#0x}"))
         data_string = " ".join(data_words)
