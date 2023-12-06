@@ -443,7 +443,7 @@ def spifi_write(openocd: OpenOcdTclRpc, address: int, data: List[int], data_len:
     print("written")
 
 
-def spifi_write_file(bytes: List[int], openocd: OpenOcdTclRpc, is_resume=True):
+def spifi_write_file(bytes: List[int], openocd: OpenOcdTclRpc):
     # print(bytes)
     print(f"Write {len(bytes)} bytes")
 
@@ -468,8 +468,6 @@ def spifi_write_file(bytes: List[int], openocd: OpenOcdTclRpc, is_resume=True):
         if spifi_read_data(openocd, address, len(bytes) - address, bytes) == 1:
             return 1
     print("end")
-    if is_resume:
-        openocd.resume(0)
 
     return 0
 

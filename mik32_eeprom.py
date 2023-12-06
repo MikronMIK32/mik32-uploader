@@ -183,7 +183,7 @@ def eeprom_check_data(openocd: OpenOcdTclRpc, words: List[int], offset: int, pri
         return eeprom_check_data_ahb_lite(openocd, words, offset, print_progress)
 
 
-def write_words(words: List[int], openocd: OpenOcdTclRpc, write_by_word=False, read_through_apb=False, is_resume=True) -> int:
+def write_words(words: List[int], openocd: OpenOcdTclRpc, write_by_word=False, read_through_apb=False) -> int:
     """
     Write words in MIK32 EEPROM through APB bus
 
@@ -240,8 +240,6 @@ def write_words(words: List[int], openocd: OpenOcdTclRpc, write_by_word=False, r
         result = eeprom_check_data_apb(openocd, words, 0)
     else:
         result = eeprom_check_data_ahb_lite(openocd, words, 0)
-    if is_resume:
-        openocd.resume(0)
 
     if result == 0:
         print("EEPROM write file done!", flush=True)
