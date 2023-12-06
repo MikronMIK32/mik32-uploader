@@ -9,13 +9,13 @@ from utils import bytes2words
 def write_file(filename):
 
     with OpenOcdTclRpc() as openocd:
-        openocd.reset_halt()
+        openocd.halt()
         print(openocd.run("load_image {%s} 0x0" % Path(filename)))
     print("RAM write file maybe done")
 
 
 def write_segments(segments: List[Segment], openocd: OpenOcdTclRpc):
-    openocd.reset_halt()
+    openocd.halt()
     for segment in segments:
         print("Writing segment %s with size %d..." % (hex(segment.offset), segment.data.__len__()))
         segment_words = bytes2words(segment.data)
