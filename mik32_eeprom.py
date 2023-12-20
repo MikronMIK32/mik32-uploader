@@ -246,6 +246,30 @@ def write_words(words: List[int], openocd: OpenOcdTclRpc, write_by_word=False, r
     return result
 
 
+def check_pages(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc) -> int:
+    openocd.halt()
+    eeprom_sysinit(openocd)
+    # configure cycles duration
+    eeprom_configure_cycles(openocd, 1, 3, 1, 100000, 1000)
+    time.sleep(0.1)
+    print("EEPROM checking...", flush=True)
+
+    pages_offsets = list(pages)
+
+    for index, page_offset in enumerate(pages_offsets):
+        page_words = bytes2words(pages[page_offset])
+
+        print(
+            f"Check page {page_offset:#06x}... {(index*100)//pages_offsets.__len__()}%", flush=True)
+
+        if eeprom_check_data(openocd, page_words, page_offset, False):
+            print("Page mismatch!", flush=True)
+            return 1
+
+    print("EEPROM page check completed", flush=True)
+    return 0
+
+
 def write_pages(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc) -> int:
     openocd.halt()
     eeprom_sysinit(openocd)

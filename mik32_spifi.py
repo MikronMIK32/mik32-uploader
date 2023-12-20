@@ -519,6 +519,82 @@ def get_segments_list(pages_offsets: List[int], segment_size: int) -> List[int]:
     return list(segments)
 
 
+def check_pages(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc, use_quad_spi=False, use_chip_erase=False):
+    result = 0
+
+    openocd.halt()
+    spifi_init(openocd)
+
+    JEDEC_ID = spifi_send_command(openocd, 0x9F, SPIFI_Frameform.OPCODE_NOADDR, SPIFI_Fieldform.ALL_SERIAL, 3)
+
+    print(f"JEDEC_ID {JEDEC_ID[0]:02x} {JEDEC_ID[1]:02x} {JEDEC_ID[2]:02x}")
+
+    dma = DMA(openocd)
+    dma.init()
+
+    dma.channels[0].write_buffer = 0
+
+    dma.channels[0].channel = ChannelIndex.CHANNEL_0
+    dma.channels[0].priority = ChannelPriority.VERY_HIGH
+
+    dma.channels[0].read_mode = ChannelMode.MEMORY
+    dma.channels[0].read_increment = ChannelIncrement.ENABLE
+    dma.channels[0].read_size = ChannelSize.WORD
+    dma.channels[0].read_burst_size = 2
+    dma.channels[0].read_request = ChannelRequest.SPIFI_REQUEST
+    dma.channels[0].read_ack = ChannelAck.DISABLE
+
+    dma.channels[0].write_mode = ChannelMode.PERIPHERY
+    dma.channels[0].write_increment = ChannelIncrement.DISABLE
+    dma.channels[0].write_size = ChannelSize.WORD
+    dma.channels[0].write_burst_size = 2
+    dma.channels[0].write_request = ChannelRequest.SPIFI_REQUEST
+    dma.channels[0].write_ack = ChannelAck.DISABLE
+
+    dma.channels[1].write_buffer = 0
+
+    dma.channels[1].channel = ChannelIndex.CHANNEL_1
+    dma.channels[1].priority = ChannelPriority.VERY_HIGH
+
+    dma.channels[1].write_mode = ChannelMode.MEMORY
+    dma.channels[1].write_increment = ChannelIncrement.ENABLE
+    dma.channels[1].write_size = ChannelSize.WORD
+    dma.channels[1].write_burst_size = 2
+    dma.channels[1].write_request = ChannelRequest.SPIFI_REQUEST
+    dma.channels[1].write_ack = ChannelAck.DISABLE
+
+    dma.channels[1].read_mode = ChannelMode.PERIPHERY
+    dma.channels[1].read_increment = ChannelIncrement.DISABLE
+    dma.channels[1].read_size = ChannelSize.WORD
+    dma.channels[1].read_burst_size = 2
+    dma.channels[1].read_request = ChannelRequest.SPIFI_REQUEST
+    dma.channels[1].read_ack = ChannelAck.DISABLE
+
+    if (use_quad_spi):
+        print("Quad Enable")
+        spifi_quad_enable(openocd)
+    else:
+        spifi_quad_disable(openocd)
+
+    pages_offsets = list(pages)
+
+    for index, page_offset in enumerate(pages_offsets):
+        print(f"Check page {page_offset:#010x}... {(index*100)//pages_offsets.__len__()}%", flush=True)
+        page_bytes = pages[page_offset]
+
+        result = spifi_read_data(openocd, page_offset, 256, page_bytes, dma=dma)
+
+        if result == 1:
+            print("Data error")
+            if (use_quad_spi):
+                spifi_quad_disable(openocd)
+            return result
+
+    if result == 0:
+        print("SPIFI page checking completed", flush=True)
+    return 0
+
+
 def write_pages(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc, use_quad_spi=False, use_chip_erase=False):
     result = 0
 

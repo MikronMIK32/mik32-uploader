@@ -5,7 +5,7 @@ from enum import Enum
 from tclrpc import OpenOcdTclRpc
 
 
-class MIK_VERSION(Enum):
+class MIK32_Version(Enum):
     MIK32V0 = "MIK32V0"
     MIK32V2 = "MIK32V2"
 
@@ -41,12 +41,12 @@ class PAD_CONFIG_REGS_V2(Enum):
 port2_value = 0
 
 
-def gpio_init(openocd: OpenOcdTclRpc, version: MIK_VERSION):
+def gpio_init(openocd: OpenOcdTclRpc, version: MIK32_Version):
 
     port2_addr = 0
-    if version == MIK_VERSION.MIK32V0:
+    if version == MIK32_Version.MIK32V0:
         port2_addr = PAD_CONFIG_BASE_ADDRESS + PAD_CONFIG_REGS_V0.PORT_2_CFG.value
-    elif version == MIK_VERSION.MIK32V2:
+    elif version == MIK32_Version.MIK32V2:
         port2_addr = PAD_CONFIG_BASE_ADDRESS + PAD_CONFIG_REGS_V2.PORT_2_CFG.value
     else:
         return
@@ -58,9 +58,9 @@ def gpio_init(openocd: OpenOcdTclRpc, version: MIK_VERSION):
 
     port2_value_updated &= 0xF000
 
-    if version == MIK_VERSION.MIK32V0:
+    if version == MIK32_Version.MIK32V0:
         port2_value_updated |= 0x000
-    elif version == MIK_VERSION.MIK32V2:
+    elif version == MIK32_Version.MIK32V2:
         port2_value_updated |= 0x555
     else:
         return
@@ -71,11 +71,11 @@ def gpio_init(openocd: OpenOcdTclRpc, version: MIK_VERSION):
     openocd.write_word(port2_addr + 8, 0x0500)
 
 
-def gpio_deinit(openocd: OpenOcdTclRpc, version: MIK_VERSION):
+def gpio_deinit(openocd: OpenOcdTclRpc, version: MIK32_Version):
 
-    if version == MIK_VERSION.MIK32V0:
+    if version == MIK32_Version.MIK32V0:
         port2_addr = PAD_CONFIG_BASE_ADDRESS + PAD_CONFIG_REGS_V0.PORT_2_CFG.value
-    elif version == MIK_VERSION.MIK32V2:
+    elif version == MIK32_Version.MIK32V2:
         port2_addr = PAD_CONFIG_BASE_ADDRESS + PAD_CONFIG_REGS_V2.PORT_2_CFG.value
     else:
         return

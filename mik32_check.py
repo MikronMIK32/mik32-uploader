@@ -1,180 +1,20 @@
-import shlex
 import argparse
-import socket
-import subprocess
+import logging
 import os
+import subprocess
+import sys
 import time
-from enum import Enum
-from typing import List, Dict, NamedTuple, Union
-from hex_parser import FirmwareFile, MemorySection, MemoryType, Segment
-from tclrpc import OpenOcdTclRpc, TclException
+from typing import List, Union
+
+from PyInstaller import DEFAULT_WORKPATH
+from mik32_pm import pm_init
+from mik32_upload import BootMode, Pages, form_pages, openocd_exec_path, openocd_scripts_path, openocd_interface_path, openocd_target_path, adapter_default_speed, run_openocd, default_post_action, default_log_path, default_openocd_host, mik32v0_sections, OpenOCDStartupException, adapter_speed_not_supported, memory_page_size
 from mik32_gpio import MIK32_Version, gpio_init, gpio_deinit
 import mik32_eeprom
 import mik32_spifi
 import mik32_ram
-import mik32_pm
-from parsers import *
-import logging
-import sys
-
-
-# class bcolors(Enum):
-#     OK = '\033[92m'
-#     WARNING = '\033[93m'
-#     FAIL = '\033[91m'
-#     ENDC = '\033[0m'
-#     BOLD = '\033[1m'
-#     UNDERLINE = '\033[4m'
-
-
-default_openocd_host = '127.0.0.1'
-openocd_exec_path = os.path.join("openocd", "bin", "openocd.exe")
-openocd_scripts_path = os.path.join("openocd", "share", "openocd", "scripts")
-openocd_interface_path = os.path.join("interface", "ftdi", "m-link.cfg")
-openocd_target_path = os.path.join("target", "mik32.cfg")
-default_log_path = "nul"
-default_post_action = "reset run"
-
-adapter_default_speed = 500
-
-
-def test_connection():
-    output = ""
-    with OpenOcdTclRpc() as openocd:
-        try:
-            output = openocd.run("capture \"reg\"")
-        except OSError:
-            logging.debug("Test connection timed out, try again")
-            output = openocd.run("capture \"reg\"")
-
-    if output == "":
-        raise Exception("ERROR: no regs found, check MCU connection")
-
-
-memory_page_size = {
-    MemoryType.EEPROM: 128,
-    MemoryType.SPIFI: 256
-}
-
-
-class BootMode(Enum):
-    UNDEFINED = 'undefined'
-    EEPROM = 'eeprom'
-    RAM = 'ram'
-    SPIFI = 'spifi'
-
-    def __str__(self):
-        return self.value
-
-    def to_memory_type(self) -> MemoryType:
-        if self.value == 'eeprom':
-            return MemoryType.EEPROM
-        if self.value == 'ram':
-            return MemoryType.RAM
-        if self.value == 'spifi':
-            return MemoryType.SPIFI
-
-        return MemoryType.UNKNOWN
-
-
-mik32v0_sections: List[MemorySection] = [
-    MemorySection(MemoryType.BOOT, 0x0, 16 * 1024),
-    MemorySection(MemoryType.EEPROM, 0x01000000, 8 * 1024),
-    MemorySection(MemoryType.RAM, 0x02000000, 16 * 1024),
-    MemorySection(MemoryType.SPIFI, 0x80000000, 8 * 1024 * 1024),
-]
-
-
-def fill_pages_from_segment(segment: Segment, page_size: int, pages: Dict[int, List[int]]):
-    if segment.memory is None:
-        return
-
-    internal_offset = segment.offset - segment.memory.offset
-
-    for i, byte in enumerate(segment.data):
-        byte_offset = internal_offset + i
-        page_n = byte_offset // page_size
-        page_offset = page_n * page_size
-
-        if (page_offset) not in pages.keys():
-            pages[page_offset] = [0] * page_size
-
-        pages[page_offset][byte_offset - page_offset] = byte
-
-
-def segments_to_pages(segments: List[Segment], page_size: int) -> Dict[int, List[int]]:
-    pages: Dict[int, List[int]] = {}
-
-    for segment in segments:
-        fill_pages_from_segment(segment, page_size, pages)
-
-    return pages
-
-
-class OpenOCDStartupException(Exception):
-    def __init__(self, msg):
-        self.msg = msg
-
-    def __repr__(self):
-        return f"OpenOCD Startup Exception: {self.msg}"
-
-
-def run_openocd(
-    openocd_exec=openocd_exec_path,
-    openocd_scripts=openocd_scripts_path,
-    openocd_interface=openocd_interface_path,
-    openocd_target=openocd_target_path,
-    is_open_console=False
-) -> subprocess.Popen:
-    cmd = [openocd_exec, "-s", openocd_scripts,
-           "-f", openocd_interface, "-f", openocd_target]
-
-    creation_flags = subprocess.SW_HIDE
-    if is_open_console:
-        creation_flags |= subprocess.CREATE_NEW_CONSOLE
-
-    proc = subprocess.Popen(
-        cmd, creationflags=creation_flags)
-
-    return proc
-
-
-class Pages(NamedTuple):
-    pages_eeprom: Dict[int, List[int]]
-    pages_spifi: Dict[int, List[int]]
-
-
-def filter_segments(segments: List[Segment], memory_type: MemoryType, boot_type: MemoryType = MemoryType.UNKNOWN) -> List[Segment]:
-    return list(
-        filter(
-            lambda segment:
-               (segment.memory is not None) and
-               ((segment.memory.type == memory_type) or (
-                   (segment.memory.type == MemoryType.BOOT) and
-                   (boot_type == memory_type)
-               )), segments
-        )
-    )
-
-
-def form_pages(segments: List[Segment], boot_mode=BootMode.UNDEFINED) -> Pages:
-    pages_eeprom = segments_to_pages(
-        filter_segments(segments, MemoryType.EEPROM,
-                        boot_mode.to_memory_type()),
-        memory_page_size[MemoryType.EEPROM]
-    )
-    pages_spifi = segments_to_pages(
-        filter_segments(segments, MemoryType.SPIFI,
-                        boot_mode.to_memory_type()),
-        memory_page_size[MemoryType.SPIFI]
-    )
-
-    return Pages(pages_eeprom, pages_spifi)
-
-
-adapter_speed_not_supported = [
-    "altera-usb-blaster",
-]
+from hex_parser import FirmwareFile, MemoryType, Segment
+from tclrpc import OpenOcdTclRpc, TclException
 
 
 def upload_file(
@@ -190,7 +30,7 @@ def upload_file(
         adapter_speed=adapter_default_speed,
         is_open_console=False,
         boot_mode=BootMode.UNDEFINED,
-        log_path=default_log_path,
+        log_path=DEFAULT_WORKPATH,
         post_action=default_post_action,
         mik_version=MIK32_Version.MIK32V2
 ) -> int:
@@ -234,39 +74,39 @@ def upload_file(
 
             logging.debug("OpenOCD configured!")
 
-            mik32_pm.pm_init(openocd)
+            pm_init(openocd)
 
             logging.debug("PM configured!")
 
             if (pages.pages_eeprom.__len__() > 0):
                 start_time = time.perf_counter()
 
-                result |= mik32_eeprom.write_pages(
+                result |= mik32_eeprom.check_pages(
                     pages.pages_eeprom, openocd)
 
                 write_time = time.perf_counter() - start_time
                 write_size = pages.pages_eeprom.__len__(
                 ) * memory_page_size[MemoryType.EEPROM]
                 print(
-                    f"Wrote {write_size} bytes in {write_time:.2f} seconds (effective {(write_size/(write_time*1024)):.1f} kbyte/s)")
+                    f"Check {write_size} bytes in {write_time:.2f} seconds (effective {(write_size/(write_time*1024)):.1f} kbyte/s)")
             if (pages.pages_spifi.__len__() > 0):
                 gpio_init(openocd, mik_version)
                 start_time = time.perf_counter()
 
-                result |= mik32_spifi.write_pages(
+                result |= mik32_spifi.check_pages(
                     pages.pages_spifi, openocd, use_quad_spi=use_quad_spi)
 
                 write_time = time.perf_counter() - start_time
                 write_size = pages.pages_spifi.__len__(
                 ) * memory_page_size[MemoryType.SPIFI]
                 print(
-                    f"Wrote {write_size} bytes in {write_time:.2f} seconds (effective {(write_size/(write_time*1024)):.1f} kbyte/s)")
+                    f"Check {write_size} bytes in {write_time:.2f} seconds (effective {(write_size/(write_time*1024)):.1f} kbyte/s)")
                 gpio_deinit(openocd, mik_version)
 
             segments_ram = list(filter(
                 lambda segment: (segment.memory is not None) and (segment.memory.type == MemoryType.RAM), segments))
             if (segments_ram.__len__() > 0):
-                mik32_ram.write_segments(segments_ram, openocd)
+                mik32_ram.check_segments(segments_ram, openocd)
                 result |= 0
 
             openocd.run(post_action)
@@ -432,4 +272,4 @@ if __name__ == '__main__':
             mik_version=namespace.mcu_type
         )
     else:
-        print("Nothing to upload")
+        print("Nothing to check")
