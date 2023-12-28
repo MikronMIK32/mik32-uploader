@@ -6,7 +6,6 @@ import sys
 import time
 from typing import List, Union
 
-from PyInstaller import DEFAULT_WORKPATH
 from mik32_pm import pm_init
 from mik32_upload import BootMode, Pages, form_pages, openocd_exec_path, openocd_scripts_path, openocd_interface_path, openocd_target_path, adapter_default_speed, run_openocd, default_post_action, default_log_path, default_openocd_host, mik32v0_sections, OpenOCDStartupException, adapter_speed_not_supported, memory_page_size
 from mik32_gpio import MIK32_Version, gpio_init, gpio_deinit
