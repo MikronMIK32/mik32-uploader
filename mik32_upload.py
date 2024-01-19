@@ -247,8 +247,10 @@ def upload_file(
                 write_time = time.perf_counter() - start_time
                 write_size = pages.pages_eeprom.__len__(
                 ) * memory_page_size[MemoryType.EEPROM]
+                t = time.localtime()
+                current_time = time.strftime("%H:%M:%S", t)
                 print(
-                    f"Wrote {write_size} bytes in {write_time:.2f} seconds (effective {(write_size/(write_time*1024)):.1f} kbyte/s)")
+                    f"[{current_time}] Wrote {write_size} bytes in {write_time:.2f} seconds (effective {(write_size/(write_time*1024)):.1f} kbyte/s)")
             if (pages.pages_spifi.__len__() > 0):
                 gpio_init(openocd, mik_version)
                 start_time = time.perf_counter()
@@ -259,8 +261,10 @@ def upload_file(
                 write_time = time.perf_counter() - start_time
                 write_size = pages.pages_spifi.__len__(
                 ) * memory_page_size[MemoryType.SPIFI]
+                t = time.localtime()
+                current_time = time.strftime("%H:%M:%S", t)
                 print(
-                    f"Wrote {write_size} bytes in {write_time:.2f} seconds (effective {(write_size/(write_time*1024)):.1f} kbyte/s)")
+                    f"[{current_time}] Wrote {write_size} bytes in {write_time:.2f} seconds (effective {(write_size/(write_time*1024)):.1f} kbyte/s)")
                 gpio_deinit(openocd, mik_version)
 
             segments_ram = list(filter(

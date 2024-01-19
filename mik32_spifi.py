@@ -293,11 +293,7 @@ def spifi_send_command(
             255
         )
 
-    openocd.write_word(SPIFI_CONFIG_ADDR, address)
-    # if idata != 0:
-    #     openocd.write_word(SPIFI_CONFIG_IDATA, idata)
-    # if cache_limit != 0:
-    #     openocd.write_word(SPIFI_CONFIG_CLIMIT, cache_limit)
+    openocd.write_memory(SPIFI_CONFIG_ADDR, 32, [address, idata])
     
     # # spifi_intrq_clear(openocd)
     # openocd.write_word(SPIFI_CONFIG_CMD, (cmd << SPIFI_CONFIG_CMD_OPCODE_S) |
@@ -315,7 +311,7 @@ def spifi_send_command(
                        (idata_length << SPIFI_CONFIG_CMD_INTLEN_S) |
                        (direction.value << SPIFI_CONFIG_CMD_DOUT_S))
 
-    openocd.write_memory(SPIFI_CONFIG_CMD, 32, [cmd_write_value, address, idata, cache_limit])
+    openocd.write_memory(SPIFI_CONFIG_CMD, 32, [cmd_write_value])
 
     if direction == SPIFI_Direction.READ:
         out_list = []
@@ -594,9 +590,17 @@ def check_pages(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc, use_quad_sp
         print("SPIFI page checking completed", flush=True)
     return 0
 
+# # PROFILING IMPORTS
+# import cProfile, pstats, io
+# from pstats import SortKey
 
 def write_pages(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc, use_quad_spi=False, use_chip_erase=False):
     result = 0
+
+    # # PROFILING INIT
+    # pr = cProfile.Profile()
+    # pr.enable()
+    # # PROFILING INIT END
 
     openocd.halt()
     spifi_init(openocd)
@@ -685,6 +689,15 @@ def write_pages(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc, use_quad_sp
 
     if (use_quad_spi):
         spifi_quad_disable(openocd)
+
+    # # PROFILING GET STATS
+    # pr.disable()
+    # s = io.StringIO()
+    # sortby = SortKey.CUMULATIVE
+    # ps = pstats.Stats(pr, stream=s).sort_stats(sortby)
+    # ps.print_stats()
+    # print(s.getvalue())
+    # # PROFILING GET STATS END
 
     if result == 0:
         print("SPIFI page recording completed", flush=True)

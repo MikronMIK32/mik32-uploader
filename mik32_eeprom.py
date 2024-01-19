@@ -70,9 +70,8 @@ class EEPROM_AffectedPages(Enum):
 
 def eeprom_execute_operation(openocd: OpenOcdTclRpc, op: EEPROM_Operation, affected_pages: EEPROM_AffectedPages, offset: int, buffer: List[int]):
     # buffer write enable and select affected pages
-    openocd.write_word(EEPROM_REGS_EECON, (1 << EEPROM_BWE_S)
-                       | (affected_pages.value << EEPROM_WRBEH_S))
-    openocd.write_word(EEPROM_REGS_EEA, offset)
+    openocd.write_memory(EEPROM_REGS_EEA, 32, [offset, (1 << EEPROM_BWE_S)
+                       | (affected_pages.value << EEPROM_WRBEH_S)])
 
     if buffer.__len__() > 32:
         return

@@ -227,10 +227,6 @@ class DMA_Channel:
             destination_address: int,
             length: int,
     ):
-        self.set_source(source_address)
-        self.set_destination(destination_address)
-        self.set_length(length)
-
         self.write_buffer |= (DMA_CFG_CH_ENABLE_M
                               | (self.priority.value << DMA_CFG_CH_PRIOR_S)
                               | (self.read_mode.value << DMA_CFG_CH_READ_MODE_S)
@@ -246,7 +242,7 @@ class DMA_Channel:
                               | (self.write_request.value << DMA_CFG_CH_WRITE_REQ_S)
                               | (self.write_ack.value << DMA_CFG_CH_ACK_WRITE_S))
 
-        self.set_config(self.write_buffer)
+        self.openocd.write_memory(DMA_CHANNEL_DESTINATION(1), 32, [destination_address, source_address, length, self.write_buffer])
 
 
 class DMA:
