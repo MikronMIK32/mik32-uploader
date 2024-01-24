@@ -20,7 +20,7 @@ def write_segments(segments: List[Segment], openocd: OpenOcdTclRpc):
     for segment in segments:
         t = time.localtime()
         current_time = time.strftime("%H:%M:%S", t)
-        print("[{current_time}] Writing segment %s with size %d..." % (hex(segment.offset), segment.data.__len__()))
+        print(f"[{current_time}] Writing segment %s with size %d..." % (hex(segment.offset), segment.data.__len__()))
         segment_words = bytes2words(segment.data)
         openocd.write_memory(segment.offset, 32, segment_words)
 
