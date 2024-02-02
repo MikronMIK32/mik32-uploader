@@ -402,7 +402,7 @@ def spifi_page_program(
         progress: str = "",
         dma: Union[DMA, None] = None
 ):
-    print(f"Writing page {ByteAddress:#010x}... {progress}", flush=True)
+    print(f"Writing Flash page {ByteAddress:#010x}... {progress}", flush=True)
     if byte_count > 256:
         raise Exception("Byte count more than 256")
 
@@ -587,7 +587,7 @@ def check_pages(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc, use_quad_sp
             return result
 
     if result == 0:
-        print("SPIFI page checking completed", flush=True)
+        print("SPIFI pages checking completed", flush=True)
     return 0
 
 # # PROFILING IMPORTS
@@ -700,5 +700,6 @@ def write_pages(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc, use_quad_sp
     # # PROFILING GET STATS END
 
     if result == 0:
-        print("SPIFI page recording completed", flush=True)
+        # Прошивка страниц флеш памяти по SPIFI была завершена
+        print("Flashing of flash memory pages via SPIFI has been completed", flush=True)
     return 0
