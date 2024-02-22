@@ -1,4 +1,7 @@
 from enum import Enum
+import os
+import pathlib
+import sys
 from typing import Dict, List, Union
 import time
 from tclrpc import TclException
@@ -699,6 +702,118 @@ def write_pages(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc, use_quad_sp
     # print(s.getvalue())
     # # PROFILING GET STATS END
 
+    if result == 0:
+        # Прошивка страниц флеш памяти по SPIFI была завершена
+        print("Flashing of flash memory pages via SPIFI has been completed", flush=True)
+    return 0
+
+
+
+def wait_halted(openocd: OpenOcdTclRpc, timeout_seconds: float = 2) -> int:
+    start_time = time.perf_counter()
+    while ("halted" not in openocd.run("riscv.cpu curstate")):
+        if (time.perf_counter() - start_time) > timeout_seconds:
+            print("Wait halted TIMEOUT!")
+            openocd.halt()
+            return 1
+        time.sleep(0.01)
+    return 0
+
+
+def write_pages_by_sectors(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc, use_quad_spi=False, use_chip_erase=False):
+    result = 0
+
+    openocd.halt()
+    spifi_init(openocd)
+
+    JEDEC_ID = spifi_send_command(openocd, 0x9F, SPIFI_Frameform.OPCODE_NOADDR, SPIFI_Fieldform.ALL_SERIAL, 3)
+    print(f"JEDEC_ID {JEDEC_ID[0]:02x} {JEDEC_ID[1]:02x} {JEDEC_ID[2]:02x}")
+
+    sectors_list = get_segments_list(list(pages), 4*1024)
+
+    openocd.halt()
+    pathname = os.path.dirname(sys.argv[0]) 
+    
+    # openocd.run("load_image {%s}" % pathlib.Path(os.path.join(pathname, "firmware.hex")))
+    openocd.run("rbp all")
+    openocd.run("load_image {%s}" % pathlib.Path("C:\\Users\\user\\Documents\\PlatformIO\\Projects\\SPIFI_JTAG_driver\\.pio\\build\\mik32v2\\firmware.hex"))
+    openocd.run("bp 0x02002010 1 hw")
+    openocd.resume(0x02000000)
+    if wait_halted(openocd) != 0:
+        return 1
+
+    # spifi erase
+    for sector in sectors_list:
+        print(f"Erase sector {sector}", flush=True)
+        openocd.write_word(0x02002000, 0b0010 | (sector << 8))
+        openocd.resume()
+        if wait_halted(openocd) != 0:
+            return 1
+        print(f"Erase sector {sector} result {openocd.read_word(0x02002008)}", flush=True)
+    
+    return 1
+
+    # spifi erase check
+    for sector in sectors_list:
+        # print(f"Erase sector {sector}", flush=True)
+        # openocd.write_word(0x02002000, 0b0010 | sector)
+        # openocd.resume()
+        # if wait_halted(openocd) != 0:
+        #     return 1
+        # print(f"Erase sector {sector} result {openocd.read_word(0x02002008)}", flush=True)
+
+        page_bytes = [0xff] * 256
+
+        result = spifi_read_data(openocd, sector, 256, page_bytes)
+
+        if result == 1:
+            print("Data error")
+            return result
+
+    for sector in sectors_list:
+        print(f"Program sector {sector}", flush=True)
+        bytes_list: List[int] = []
+        for page in range(16):
+            page = pages.get(page * 256 + sector * 4096)
+            if page is not None:
+                bytes_list.extend(page)
+            else:
+                bytes_list.extend([0]*256)
+        
+        extend_value = 1 + sector
+        bytes_list.extend([(extend_value >> 0) & 0xFF, (extend_value >> 8) & 0xFF, (extend_value >> 16) & 0xFF, (extend_value >> 24) & 0xFF])
+        # print(bytes_list)
+
+        while (openocd.read_word(0x0200200c) != 1):
+            openocd.resume()
+            openocd.halt()
+        
+        openocd.write_memory(0x02001000, 8, bytes_list)
+        while (openocd.read_word(0x0200200c) != 1):
+            openocd.resume()
+            openocd.halt()
+        time.sleep(0.5)
+        openocd.halt()
+        print(f"Program sector {sector} result {openocd.read_word(0x02002008)}", flush=True)
+
+    spifi_init_memory(openocd)
+
+    # check write   
+    pages_offsets = list(pages)
+    for index, page_offset in enumerate(pages_offsets):
+        page_bytes = pages[page_offset]
+
+        memory_bytes = openocd.read_memory(page_offset + 0x80000000, 8, 256)
+        print(page_offset, memory_bytes)
+
+        for i, byte in enumerate(memory_bytes):
+            if byte != page_bytes[i]:
+                print("Data error!")
+                openocd.run("rbp 0x02002010")
+                return result
+
+
+    openocd.run("rbp 0x02002010")
     if result == 0:
         # Прошивка страниц флеш памяти по SPIFI была завершена
         print("Flashing of flash memory pages via SPIFI has been completed", flush=True)
