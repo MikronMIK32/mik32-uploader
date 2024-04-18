@@ -233,10 +233,7 @@ def upload_file(
         except OSError as e:
             raise OpenOCDStartupException(e)
     try:
-        # time.sleep(0.1)
-
         with OpenOcdTclRpc(host, port) as openocd:
-            print('try beginning')
             if (all(openocd_interface.find(i) == -1 for i in adapter_speed_not_supported)):
                 openocd.run(f"adapter speed {adapter_speed}")
             openocd.run(f"log_output \"{log_path}\"")
