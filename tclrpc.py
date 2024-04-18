@@ -1,6 +1,7 @@
 import re
 import socket
 from logging import getLogger
+import time
 from typing import List
 logger = getLogger(__name__)
 
@@ -52,9 +53,11 @@ class OpenOcdTclRpc:
 
     def __enter__(self):
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.sock.settimeout(5.0)
         try:
-            self.sock.connect((self.host, self.port))
+            # self.sock.connect((self.host, self.port))
+            self.wait_for_port()
+        # except Exception as e:
+        #     print(e)
         except socket.timeout:
             logger.debug("Test connection timed out, try again")
             self.sock.close()
@@ -87,6 +90,18 @@ class OpenOcdTclRpc:
                 if index != len(data) - 1:
                     raise Exception('Unhandled extra bytes after %r'.format(self.SEPARATOR_BYTES))
                 return data[:-1]
+        
+    def wait_for_port(self, timeout: float = 5.0):
+        sock = None
+        start_time = time.perf_counter()
+        while time.perf_counter() - start_time < timeout:
+            try:
+                sock = self.sock.connect((self.host, self.port))
+                break
+            except OSError as ex:
+                time.sleep(0.01)
+        if sock != None:
+            self.sock = sock
 
     def run(self, cmd):
         """Run a command and raise an error if it returns an error"""

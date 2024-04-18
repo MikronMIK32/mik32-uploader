@@ -26,9 +26,13 @@ import sys
 #     BOLD = '\033[1m'
 #     UNDERLINE = '\033[4m'
 
+if os.name == 'nt':
+    openocd_exec = "openocd.exe"
+else:
+    openocd_exec = "openocd"
 
 default_openocd_host = '127.0.0.1'
-openocd_exec_path = os.path.join("openocd", "bin", "openocd.exe")
+openocd_exec_path = os.path.join("openocd", "bin", openocd_exec)
 openocd_scripts_path = os.path.join("openocd", "share", "openocd", "scripts")
 openocd_interface_path = os.path.join("interface", "ftdi", "m-link.cfg")
 openocd_target_path = os.path.join("target", "mik32.cfg")
@@ -129,12 +133,15 @@ def run_openocd(
     cmd = [openocd_exec, "-s", openocd_scripts,
            "-f", openocd_interface, "-f", openocd_target]
 
-    creation_flags = subprocess.SW_HIDE
-    if is_open_console:
-        creation_flags |= subprocess.CREATE_NEW_CONSOLE
+    if os.name == 'nt':
+        creation_flags = subprocess.SW_HIDE
+        if is_open_console:
+            creation_flags |= subprocess.CREATE_NEW_CONSOLE
 
-    proc = subprocess.Popen(
-        cmd, creationflags=creation_flags)
+        proc = subprocess.Popen(
+            cmd, creationflags=creation_flags)
+    else:
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE)
 
     return proc
 
@@ -226,7 +233,10 @@ def upload_file(
         except OSError as e:
             raise OpenOCDStartupException(e)
     try:
+        # time.sleep(0.1)
+
         with OpenOcdTclRpc(host, port) as openocd:
+            print('try beginning')
             if (all(openocd_interface.find(i) == -1 for i in adapter_speed_not_supported)):
                 openocd.run(f"adapter speed {adapter_speed}")
             openocd.run(f"log_output \"{log_path}\"")
