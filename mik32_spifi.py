@@ -141,6 +141,9 @@ READ_SREG_LEN = 1
 READ_LEN = 256
 TIMEOUT = 1000
 
+ENABLE_RESET_COMMAND = 0x66
+RESET_COMMAND = 0x99
+
 CHIP_ERASE_COMMAND = 0xC7
 SECTOR_ERASE_COMMAND = 0x20
 
@@ -359,6 +362,17 @@ def spifi_wait_busy(openocd: OpenOcdTclRpc):
         sreg1 = spifi_read_sreg(openocd, SREG_Num.SREG1)
         if not (sreg1 & SREG1_BUSY):
             break
+
+
+RESET_DELAY = 0.001
+
+def spifi_chip_reset_qpi(openocd: OpenOcdTclRpc):
+    spifi_send_command(openocd, ENABLE_RESET_COMMAND,
+                       SPIFI_Frameform.OPCODE_NOADDR, SPIFI_Fieldform.ALL_PARALLEL)
+    spifi_send_command(openocd, RESET_COMMAND,
+                       SPIFI_Frameform.OPCODE_NOADDR, SPIFI_Fieldform.ALL_PARALLEL)
+    
+    time.sleep(RESET_DELAY)
 
 
 def spifi_chip_erase(openocd: OpenOcdTclRpc):
@@ -604,7 +618,9 @@ def write_pages(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc, use_quad_sp
 
     openocd.halt()
     spifi_init(openocd)
-
+    
+    spifi_chip_reset_qpi(openocd)
+    
     JEDEC_ID = spifi_send_command(openocd, 0x9F, SPIFI_Frameform.OPCODE_NOADDR, SPIFI_Fieldform.ALL_SERIAL, 3)
 
     print(f"JEDEC_ID {JEDEC_ID[0]:02x} {JEDEC_ID[1]:02x} {JEDEC_ID[2]:02x}")
