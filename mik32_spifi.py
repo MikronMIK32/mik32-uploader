@@ -150,6 +150,8 @@ SECTOR_ERASE_COMMAND = 0x20
 WRITE_ENABLE_COMMAND = 0x06
 WRITE_DISABLE_COMMAND = 0x04
 
+DISABLE_QPI_COMMAND = 0xFF
+
 MEM_CONFIG_COMMAND = 0x61
 MEM_CONFIG_VALUE = 0x7F
 
@@ -364,15 +366,31 @@ def spifi_wait_busy(openocd: OpenOcdTclRpc):
             break
 
 
-RESET_DELAY = 0.001
+#RESET_DELAY = 0.001
 
-def spifi_chip_reset_qpi(openocd: OpenOcdTclRpc):
-    spifi_send_command(openocd, ENABLE_RESET_COMMAND,
-                       SPIFI_Frameform.OPCODE_NOADDR, SPIFI_Fieldform.ALL_PARALLEL)
-    spifi_send_command(openocd, RESET_COMMAND,
-                       SPIFI_Frameform.OPCODE_NOADDR, SPIFI_Fieldform.ALL_PARALLEL)
+
+#def spifi_chip_reset(openocd: OpenOcdTclRpc):
+#    print("Sending RESET to external flash chip in SPI mode...", flush=True)
+#    spifi_send_command(openocd, ENABLE_RESET_COMMAND,
+#                       SPIFI_Frameform.OPCODE_NOADDR, SPIFI_Fieldform.ALL_SERIAL)
+#    spifi_send_command(openocd, RESET_COMMAND,
+#                       SPIFI_Frameform.OPCODE_NOADDR, SPIFI_Fieldform.ALL_SERIAL)
+#    time.sleep(RESET_DELAY)
+
+
+#def spifi_chip_reset_qpi(openocd: OpenOcdTclRpc):
+#    print("Sending RESET to external flash chip in QPI mode...", flush=True)
+#    spifi_send_command(openocd, ENABLE_RESET_COMMAND,
+#                       SPIFI_Frameform.OPCODE_NOADDR, SPIFI_Fieldform.ALL_PARALLEL)
+#    spifi_send_command(openocd, RESET_COMMAND,
+#                       SPIFI_Frameform.OPCODE_NOADDR, SPIFI_Fieldform.ALL_PARALLEL)
+#    
+#    time.sleep(RESET_DELAY)
     
-    time.sleep(RESET_DELAY)
+def spifi_chip_disable_qpi(openocd: OpenOcdTclRpc):
+    #print("Sending 'Disable QPI' to external flash chip in QPI mode...", flush=True)
+    spifi_send_command(openocd, DISABLE_QPI_COMMAND,
+                       SPIFI_Frameform.OPCODE_NOADDR, SPIFI_Fieldform.ALL_PARALLEL)
 
 
 def spifi_chip_erase(openocd: OpenOcdTclRpc):
@@ -619,11 +637,44 @@ def write_pages(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc, use_quad_sp
     openocd.halt()
     spifi_init(openocd)
     
-    spifi_chip_reset_qpi(openocd)
+    spifi_chip_disable_qpi(openocd)
     
-    JEDEC_ID = spifi_send_command(openocd, 0x9F, SPIFI_Frameform.OPCODE_NOADDR, SPIFI_Fieldform.ALL_SERIAL, 3)
+    #spifi_chip_reset_qpi(openocd)
+    
+    #spifi_chip_reset(openocd)
+    #print("Reading JEDEC ID from external flash chip in SPI mode...", flush=True)
+    #JEDEC_ID = spifi_send_command(openocd, 0x9F, SPIFI_Frameform.OPCODE_NOADDR, SPIFI_Fieldform.ALL_SERIAL, 3)
+    
+    #W25Q64FV_SPI_ID = [0xef,0x40,0x17]
+    #W25Q64FV_QPI_ID = [0xef,0x60,0x17]
+    #BLANK_FF_ID = [0xff,0xff,0xff]
+    #BLANK_00_ID = [0x00,0x00,0x00]
+    
+    #if (JEDEC_ID != BLANK_00_ID and JEDEC_ID != BLANK_FF_ID):
+    #    print("...Success!", flush=True)
+    #    print(f"JEDEC SPI ID = {JEDEC_ID[0]:02x} {JEDEC_ID[1]:02x} {JEDEC_ID[2]:02x}")
+    #else:
+    #    print("...Failure!", flush=True)
+    #    print("Reading JEDEC ID from external flash chip in QPI mode...", flush=True)
+    #    JEDEC_ID = spifi_send_command(openocd, 0x9F, SPIFI_Frameform.OPCODE_NOADDR, SPIFI_Fieldform.ALL_PARALLEL, 3)
+    #    if (JEDEC_ID != BLANK_00_ID and JEDEC_ID != BLANK_FF_ID):
+    #        print("...Success!", flush=True)
+    #        print(f"JEDEC QPI ID = {JEDEC_ID[0]:02x} {JEDEC_ID[1]:02x} {JEDEC_ID[2]:02x}")
+    #    else:
+    #        print("...Failure!", flush=True)
+    #     spifi_chip_reset_qpi(openocd)
+    #    print("Reading JEDEC ID from external flash chip in SPI mode...", flush=True)
+    #    JEDEC_ID = spifi_send_command(openocd, 0x9F, SPIFI_Frameform.OPCODE_NOADDR, SPIFI_Fieldform.ALL_SERIAL, 3)
+    #    if (JEDEC_ID != BLANK_00_ID and JEDEC_ID != BLANK_FF_ID):
+    #        print("...Success!", flush=True)
+    #        print(f"JEDEC SPI ID = {JEDEC_ID[0]:02x} {JEDEC_ID[1]:02x} {JEDEC_ID[2]:02x}")
+    #    else:
+    #        print("Failure! Suitable external flash chip not found.", flush=True)
+    #        return 1
 
-    print(f"JEDEC_ID {JEDEC_ID[0]:02x} {JEDEC_ID[1]:02x} {JEDEC_ID[2]:02x}")
+    JEDEC_ID = spifi_send_command(openocd, 0x9F, SPIFI_Frameform.OPCODE_NOADDR, SPIFI_Fieldform.ALL_SERIAL, 3)
+    
+    print(f"JEDEC SPI ID = {JEDEC_ID[0]:02x} {JEDEC_ID[1]:02x} {JEDEC_ID[2]:02x}")
 
     dma = DMA(openocd)
     dma.init()
