@@ -137,7 +137,6 @@ SPIFI_CONFIG_STAT_VERSION_M = (0xFF << SPIFI_CONFIG_STAT_VERSION_S)
 # --------------------------
 SREG1_BUSY = 1
 
-READ_SREG_LEN = 1
 READ_LEN = 256
 TIMEOUT = 1000
 
@@ -155,11 +154,8 @@ READ_DATA_COMMAND = 0x03
 FAST_READ_QUAD_OUTPUT_COMMAND = 0x6B
 
 READ_SREG1_COMMAND = 0x05
-WRITE_SREG1_COMMAND = 0x01
 READ_SREG2_COMMAND = 0x35
-WRITE_SREG2_COMMAND = 0x31
-READ_SREG3_COMMAND = 0x15
-WRITE_SREG3_COMMAND = 0x11
+WRITE_SREG_COMMAND = 0x01
 
 SREG2_QUAD_ENABLE = 9
 SREG2_QUAD_ENABLE_S = (SREG2_QUAD_ENABLE-8)
@@ -173,7 +169,6 @@ QUAD_PAGE_PROGRAM_COMMAND = 0x32
 class SREG_Num(Enum):
     SREG1 = 0x00
     SREG2 = 0x30
-    SREG3 = 0x10
 
 
 def spifi_intrq_clear(openocd: OpenOcdTclRpc):
@@ -346,12 +341,29 @@ def spifi_write_enable(openocd: OpenOcdTclRpc):
 
 
 def spifi_read_sreg(openocd: OpenOcdTclRpc, sreg: SREG_Num) -> int:
-    read_sreg: int = 0
-
     return spifi_send_command(
-        openocd, READ_SREG1_COMMAND | sreg.value, SPIFI_Frameform.OPCODE_NOADDR,
-        SPIFI_Fieldform.ALL_SERIAL, byte_count=READ_SREG_LEN
+        openocd, 
+        READ_SREG1_COMMAND | sreg.value, 
+        SPIFI_Frameform.OPCODE_NOADDR, 
+        SPIFI_Fieldform.ALL_SERIAL, 
+        byte_count=1
     )[0]
+
+
+def spifi_write_sreg(openocd: OpenOcdTclRpc, sreg1: int, sreg2: int):
+    spifi_send_command(openocd, 0xFF,
+                       SPIFI_Frameform.OPCODE_NOADDR, SPIFI_Fieldform.ALL_PARALLEL)
+    spifi_write_enable(openocd)
+    spifi_send_command(
+        openocd, 
+        WRITE_SREG_COMMAND, 
+        SPIFI_Frameform.OPCODE_NOADDR, 
+        SPIFI_Fieldform.ALL_SERIAL, 
+        byte_count=2, 
+        direction=SPIFI_Direction.WRITE, 
+        data=[sreg1, sreg2]
+    )
+    spifi_wait_busy(openocd)
 
 
 def spifi_wait_busy(openocd: OpenOcdTclRpc):
@@ -488,24 +500,23 @@ def spifi_quad_page_program(
 
 
 def spifi_quad_enable(openocd):
-    sreg2 = spifi_read_sreg(openocd, SREG_Num.SREG2)
-
-    spifi_write_enable(openocd)
-    spifi_send_command(openocd, WRITE_SREG2_COMMAND, SPIFI_Frameform.OPCODE_3ADDR,
-                       SPIFI_Fieldform.ALL_SERIAL, byte_count=1,
-                       idata=0, cache_limit=0, direction=SPIFI_Direction.WRITE, data=[sreg2 | SREG2_QUAD_ENABLE_M])
-    spifi_wait_busy(openocd)
+    spifi_write_sreg(
+        openocd, 
+        spifi_read_sreg(openocd, SREG_Num.SREG1), 
+        spifi_read_sreg(openocd, SREG_Num.SREG2) | SREG2_QUAD_ENABLE_M
+    )
 
 
 def spifi_quad_disable(openocd):
-    sreg2 = spifi_read_sreg(openocd, SREG_Num.SREG2)
+    spifi_write_sreg(
+        openocd, 
+        spifi_read_sreg(openocd, SREG_Num.SREG1), 
+        spifi_read_sreg(openocd, SREG_Num.SREG2) & (0xFF ^ SREG2_QUAD_ENABLE_M)
+    )
 
-    spifi_write_enable(openocd)
-    spifi_send_command(openocd, WRITE_SREG2_COMMAND, SPIFI_Frameform.OPCODE_3ADDR,
-                       SPIFI_Fieldform.ALL_SERIAL, byte_count=1,
-                       idata=0, cache_limit=0, direction=SPIFI_Direction.WRITE, data=[
-                           sreg2 & (~SREG2_QUAD_ENABLE_M)])
-    spifi_wait_busy(openocd)
+
+def spifi_check_quad_enable(openocd):
+    return (spifi_read_sreg(openocd, SREG_Num.SREG2) & SREG2_QUAD_ENABLE_M) != 0
 
 
 def get_segments_list(pages_offsets: List[int], segment_size: int) -> List[int]:
@@ -663,11 +674,17 @@ def write_pages(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc, use_quad_sp
         #         print("Data error")
         #         return result
 
+    print("Quad Enable", spifi_check_quad_enable(openocd))
+
     if (use_quad_spi):
-        print("Quad Enable")
+        print("Using Quad SPI")
         spifi_quad_enable(openocd)
     else:
+        print("Using Single SPI")
         spifi_quad_disable(openocd)
+    
+    # print("SREG1", spifi_read_sreg(openocd, SREG_Num.SREG1))
+    # print("SREG2", spifi_read_sreg(openocd, SREG_Num.SREG2))
 
     pages_offsets = list(pages)
 
