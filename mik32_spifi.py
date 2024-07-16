@@ -146,6 +146,8 @@ SECTOR_ERASE_COMMAND = 0x20
 WRITE_ENABLE_COMMAND = 0x06
 WRITE_DISABLE_COMMAND = 0x04
 
+DISABLE_QPI_COMMAND = 0xFF
+
 MEM_CONFIG_COMMAND = 0x61
 MEM_CONFIG_VALUE = 0x7F
 
@@ -371,6 +373,12 @@ def spifi_wait_busy(openocd: OpenOcdTclRpc):
         sreg1 = spifi_read_sreg(openocd, SREG_Num.SREG1)
         if not (sreg1 & SREG1_BUSY):
             break
+
+
+def spifi_chip_disable_qpi(openocd: OpenOcdTclRpc):
+    #print("Sending 'Disable QPI' command to external flash chip in QPI mode.", flush=True)
+    spifi_send_command(openocd, DISABLE_QPI_COMMAND,
+                       SPIFI_Frameform.OPCODE_NOADDR, SPIFI_Fieldform.ALL_PARALLEL)
 
 
 def spifi_chip_erase(openocd: OpenOcdTclRpc):
@@ -615,6 +623,9 @@ def write_pages(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc, use_quad_sp
 
     openocd.halt()
     spifi_init(openocd)
+    
+    # Выводим микросхему из режима QPI, так как SPIFI здесь будет работать в режиме SPI.
+    spifi_chip_disable_qpi(openocd)
 
     JEDEC_ID = spifi_send_command(openocd, 0x9F, SPIFI_Frameform.OPCODE_NOADDR, SPIFI_Fieldform.ALL_SERIAL, 3)
 
