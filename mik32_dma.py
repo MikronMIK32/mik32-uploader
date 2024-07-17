@@ -264,6 +264,7 @@ class DMA:
         self.current_value = CurrentValue.ENABLE
 
         self.write_buffer = 0
+        self.openocd.write_memory(0x40000, 32, [0] * 16)
         self.clear_irq()
         self.set_current_value(self.current_value)
 
