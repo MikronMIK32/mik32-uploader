@@ -7,7 +7,7 @@ import time
 from typing import List, Union
 
 from mik32_pm import pm_init
-from mik32_upload import BootMode, Pages, form_pages, openocd_exec_path, openocd_scripts_path, openocd_interface_path, openocd_target_path, adapter_default_speed, run_openocd, default_post_action, default_log_path, default_openocd_host, mik32v0_sections, OpenOCDStartupException, adapter_speed_not_supported, memory_page_size
+from mik32_upload import BootMode, Pages, form_pages, openocd_exec_path, openocd_scripts_path, openocd_interface_path, openocd_target_path, adapter_default_speed, run_openocd, default_post_action, default_log_path, default_openocd_host, mik32v2_sections, OpenOCDStartupException, adapter_speed_not_supported, memory_page_size
 from mik32_gpio import MIK32_Version, gpio_init, gpio_deinit
 import mik32_eeprom
 import mik32_spifi
@@ -47,7 +47,7 @@ def upload_file(
         print(f"ERROR: File {filename} does not exist")
         exit(1)
 
-    file = FirmwareFile(filename, mik32v0_sections)
+    file = FirmwareFile(filename, mik32v2_sections)
 
     segments: List[Segment] = file.get_segments()
     pages: Pages = form_pages(segments, boot_mode)
