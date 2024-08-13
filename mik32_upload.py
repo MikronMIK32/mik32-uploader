@@ -221,8 +221,6 @@ def upload_file(
     pages: Pages = form_pages(segments, boot_mode)
 
     proc: Union[subprocess.Popen, None] = None
-    is_run_openocd = False
-    log_path = "default"
     if is_run_openocd:
         try:
             logging.debug("OpenOCD try start!")
@@ -265,7 +263,7 @@ def upload_file(
                 gpio_init(openocd, mik_version)
                 start_time = time.perf_counter()
 
-                result |= mik32_spifi.write_pages_by_sectors(
+                result |= mik32_spifi.write_pages(
                     pages.pages_spifi, openocd, use_quad_spi=use_quad_spi)
 
                 write_time = time.perf_counter() - start_time
@@ -283,7 +281,6 @@ def upload_file(
                 mik32_ram.write_segments(segments_ram, openocd)
                 result |= 0
 
-            post_action = ""
             openocd.run(post_action)
     except ConnectionRefusedError:
         print("ERROR: The connection to OpenOCD is not established. Check the settings and connection of the debugger")
