@@ -140,11 +140,16 @@ SREG1_BUSY = 1
 READ_LEN = 256
 TIMEOUT = 1000
 
+ENABLE_RESET_COMMAND = 0x66
+RESET_COMMAND = 0x99
+
 CHIP_ERASE_COMMAND = 0xC7
 SECTOR_ERASE_COMMAND = 0x20
 
 WRITE_ENABLE_COMMAND = 0x06
 WRITE_DISABLE_COMMAND = 0x04
+
+#DISABLE_QPI_COMMAND = 0xFF
 
 MEM_CONFIG_COMMAND = 0x61
 MEM_CONFIG_VALUE = 0x7F
@@ -164,6 +169,8 @@ SREG2_QUAD_ENABLE_M = 1 << SREG2_QUAD_ENABLE_S
 PAGE_PROGRAM_COMMAND = 0x02
 
 QUAD_PAGE_PROGRAM_COMMAND = 0x32
+
+JEDEC_ID_COMMAND = 0x9F
 
 
 class SREG_Num(Enum):
@@ -216,7 +223,7 @@ def spifi_init_memory(openocd: OpenOcdTclRpc):
     openocd.write_word(SPIFI_CONFIG_MCMD, (0 << SPIFI_CONFIG_MCMD_INTLEN_S) |
                              (SPIFI_CONFIG_CMD_FIELDFORM_ALL_SERIAL << SPIFI_CONFIG_MCMD_FIELDFORM_S) |
                              (SPIFI_CONFIG_CMD_FRAMEFORM_OPCODE_3ADDR << SPIFI_CONFIG_MCMD_FRAMEFORM_S) |
-                             (0x03 << SPIFI_CONFIG_MCMD_OPCODE_S))
+                             (READ_DATA_COMMAND << SPIFI_CONFIG_MCMD_OPCODE_S))
     
     time.sleep(INIT_DELAY)
 
@@ -351,8 +358,8 @@ def spifi_read_sreg(openocd: OpenOcdTclRpc, sreg: SREG_Num) -> int:
 
 
 def spifi_write_sreg(openocd: OpenOcdTclRpc, sreg1: int, sreg2: int):
-    spifi_send_command(openocd, 0xFF,
-                       SPIFI_Frameform.OPCODE_NOADDR, SPIFI_Fieldform.ALL_PARALLEL)
+#    spifi_send_command(openocd, DISABLE_QPI_COMMAND,
+#                       SPIFI_Frameform.OPCODE_NOADDR, SPIFI_Fieldform.ALL_PARALLEL)
     spifi_write_enable(openocd)
     spifi_send_command(
         openocd, 
@@ -372,6 +379,30 @@ def spifi_wait_busy(openocd: OpenOcdTclRpc):
         if not (sreg1 & SREG1_BUSY):
             break
 
+RESET_DELAY = 0.001
+
+def spifi_chip_reset(openocd: OpenOcdTclRpc):
+    #print("Sending 'Reset' to external chip in SPI mode", flush=True)
+    spifi_send_command(openocd, ENABLE_RESET_COMMAND,
+                       SPIFI_Frameform.OPCODE_NOADDR, SPIFI_Fieldform.ALL_SERIAL)
+    spifi_send_command(openocd, RESET_COMMAND,
+                       SPIFI_Frameform.OPCODE_NOADDR, SPIFI_Fieldform.ALL_SERIAL)
+    time.sleep(RESET_DELAY)
+
+
+def spifi_chip_reset_qpi(openocd: OpenOcdTclRpc):
+    #print("Sending 'Reset' to external chip in QPI mode", flush=True)
+    spifi_send_command(openocd, ENABLE_RESET_COMMAND,
+                       SPIFI_Frameform.OPCODE_NOADDR, SPIFI_Fieldform.ALL_PARALLEL)
+    spifi_send_command(openocd, RESET_COMMAND,
+                       SPIFI_Frameform.OPCODE_NOADDR, SPIFI_Fieldform.ALL_PARALLEL)
+    time.sleep(RESET_DELAY)
+
+#def spifi_chip_disable_qpi(openocd: OpenOcdTclRpc):
+    #print("Sending 'Disable QPI' command to external flash chip in QPI mode.", flush=True)
+#    spifi_send_command(openocd, DISABLE_QPI_COMMAND,
+#                       SPIFI_Frameform.OPCODE_NOADDR, SPIFI_Fieldform.ALL_PARALLEL)
+
 
 def spifi_chip_erase(openocd: OpenOcdTclRpc):
     print("Chip erase...", flush=True)
@@ -385,10 +416,13 @@ def spifi_sector_erase(openocd: OpenOcdTclRpc, address: int):
                        SPIFI_Frameform.OPCODE_3ADDR, SPIFI_Fieldform.ALL_SERIAL, address=address)
 
 
-def spifi_read_data(openocd: OpenOcdTclRpc, address: int, byte_count: int, bin_data: List[int], dma: Union[DMA, None] = None) -> int:
+def spifi_read_data(openocd: OpenOcdTclRpc, address: int, byte_count: int, bin_data: List[int], dma: Union[DMA, None] = None, use_quad_spi=False) -> int:
     read_data: List[int] = []
 
-    read_data = spifi_send_command(openocd, READ_DATA_COMMAND, SPIFI_Frameform.OPCODE_3ADDR, SPIFI_Fieldform.ALL_SERIAL, byte_count=byte_count, address=address, dma=dma)
+    if (use_quad_spi):
+        read_data = spifi_send_command(openocd, FAST_READ_QUAD_OUTPUT_COMMAND, SPIFI_Frameform.OPCODE_3ADDR, SPIFI_Fieldform.DATA_PARALLEL, byte_count=byte_count, address=address, idata_length=1, dma=dma)
+    else:
+        read_data = spifi_send_command(openocd, READ_DATA_COMMAND, SPIFI_Frameform.OPCODE_3ADDR, SPIFI_Fieldform.ALL_SERIAL, byte_count=byte_count, address=address, dma=dma)
 
     for i in range(byte_count):
         if read_data[i] != bin_data[i]:
@@ -500,19 +534,21 @@ def spifi_quad_page_program(
 
 
 def spifi_quad_enable(openocd):
-    spifi_write_sreg(
-        openocd, 
-        spifi_read_sreg(openocd, SREG_Num.SREG1), 
-        spifi_read_sreg(openocd, SREG_Num.SREG2) | SREG2_QUAD_ENABLE_M
-    )
+    if (spifi_check_quad_enable(openocd) != True):
+        spifi_write_sreg(
+            openocd, 
+            spifi_read_sreg(openocd, SREG_Num.SREG1), 
+            spifi_read_sreg(openocd, SREG_Num.SREG2) | SREG2_QUAD_ENABLE_M
+        )
 
 
-def spifi_quad_disable(openocd):
-    spifi_write_sreg(
-        openocd, 
-        spifi_read_sreg(openocd, SREG_Num.SREG1), 
-        spifi_read_sreg(openocd, SREG_Num.SREG2) & (0xFF ^ SREG2_QUAD_ENABLE_M)
-    )
+#def spifi_quad_disable(openocd):
+#    if (spifi_check_quad_enable(openocd) == True):
+#        spifi_write_sreg(
+#            openocd, 
+#            spifi_read_sreg(openocd, SREG_Num.SREG1), 
+#            spifi_read_sreg(openocd, SREG_Num.SREG2) & (0xFF ^ SREG2_QUAD_ENABLE_M)
+#        )
 
 
 def spifi_check_quad_enable(openocd):
@@ -531,10 +567,16 @@ def check_pages(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc, use_quad_sp
 
     openocd.halt()
     spifi_init(openocd)
+    
+    # Сбрасываем микросхему в режиме QPI из всех состояний в нормальный SPI режим.
+    spifi_chip_reset_qpi(openocd)
+    
+    # Сбрасываем микросхему в режиме SPI из всех состояний в нормальный SPI режим.
+    spifi_chip_reset(openocd)
 
-    JEDEC_ID = spifi_send_command(openocd, 0x9F, SPIFI_Frameform.OPCODE_NOADDR, SPIFI_Fieldform.ALL_SERIAL, 3)
+    JEDEC_ID = spifi_send_command(openocd, JEDEC_ID_COMMAND, SPIFI_Frameform.OPCODE_NOADDR, SPIFI_Fieldform.ALL_SERIAL, 3)
 
-    print(f"JEDEC_ID {JEDEC_ID[0]:02x} {JEDEC_ID[1]:02x} {JEDEC_ID[2]:02x}")
+    print(f"JEDEC ID = {JEDEC_ID[0]:02x} {JEDEC_ID[1]:02x} {JEDEC_ID[2]:02x}")
 
     dma = DMA(openocd)
     dma.init()
@@ -578,10 +620,11 @@ def check_pages(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc, use_quad_sp
     dma.channels[1].read_ack = ChannelAck.DISABLE
 
     if (use_quad_spi):
-        print("Quad Enable")
+        print("Using Quad SPI")
         spifi_quad_enable(openocd)
     else:
-        spifi_quad_disable(openocd)
+        print("Using Single SPI")
+    #    spifi_quad_disable(openocd)
 
     pages_offsets = list(pages)
 
@@ -589,12 +632,12 @@ def check_pages(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc, use_quad_sp
         print(f"Check page {page_offset:#010x}... {(index*100)//pages_offsets.__len__()}%", flush=True)
         page_bytes = pages[page_offset]
 
-        result = spifi_read_data(openocd, page_offset, 256, page_bytes, dma=dma)
+        result = spifi_read_data(openocd, page_offset, 256, page_bytes, dma=dma, use_quad_spi=use_quad_spi)
 
         if result == 1:
             print("Data error")
-            if (use_quad_spi):
-                spifi_quad_disable(openocd)
+            #if (use_quad_spi):
+            #    spifi_quad_disable(openocd)
             return result
 
     if result == 0:
@@ -615,10 +658,16 @@ def write_pages(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc, use_quad_sp
 
     openocd.halt()
     spifi_init(openocd)
+    
+    # Сбрасываем микросхему в режиме QPI из всех состояний в нормальный SPI режим.
+    spifi_chip_reset_qpi(openocd)
+    
+    # Сбрасываем микросхему в режиме SPI из всех состояний в нормальный SPI режим.
+    spifi_chip_reset(openocd)
 
-    JEDEC_ID = spifi_send_command(openocd, 0x9F, SPIFI_Frameform.OPCODE_NOADDR, SPIFI_Fieldform.ALL_SERIAL, 3)
+    JEDEC_ID = spifi_send_command(openocd, JEDEC_ID_COMMAND, SPIFI_Frameform.OPCODE_NOADDR, SPIFI_Fieldform.ALL_SERIAL, 3)
 
-    print(f"JEDEC_ID {JEDEC_ID[0]:02x} {JEDEC_ID[1]:02x} {JEDEC_ID[2]:02x}")
+    print(f"JEDEC ID = {JEDEC_ID[0]:02x} {JEDEC_ID[1]:02x} {JEDEC_ID[2]:02x}")
 
     dma = DMA(openocd)
     dma.init()
@@ -681,7 +730,7 @@ def write_pages(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc, use_quad_sp
         spifi_quad_enable(openocd)
     else:
         print("Using Single SPI")
-        spifi_quad_disable(openocd)
+        #spifi_quad_disable(openocd)
     
     # print("SREG1", spifi_read_sreg(openocd, SREG_Num.SREG1))
     # print("SREG2", spifi_read_sreg(openocd, SREG_Num.SREG2))
@@ -698,14 +747,14 @@ def write_pages(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc, use_quad_sp
             spifi_page_program(openocd, page_offset, page_bytes,
                                256, f"{(index*100)//pages_offsets.__len__()}%", dma=dma)
 
-        result = spifi_read_data(openocd, page_offset, 256, page_bytes, dma=dma)
+        result = spifi_read_data(openocd, page_offset, 256, page_bytes, dma=dma, use_quad_spi=use_quad_spi)
 
         if result == 1:
             print("Data error")
             return result
 
-    if (use_quad_spi):
-        spifi_quad_disable(openocd)
+    #if (use_quad_spi):
+    #    spifi_quad_disable(openocd)
 
     # # PROFILING GET STATS
     # pr.disable()

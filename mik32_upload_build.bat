@@ -1,0 +1,1 @@
+pyinstaller mik32_upload.spec
