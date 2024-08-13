@@ -1,1 +1,1 @@
-{"type": "tool", "name": "tool-mik32-uploader", "version": "0.1.0", "spec": {"owner": "platformio", "id": 1235, "name": "tool-mik32-uploader", "requirements": null, "uri": null}}
+{"type": "tool", "name": "tool-mik32-uploader", "version": "0.2.0", "spec": {"owner": "platformio", "id": 122, "name": "tool-mik32-uploader", "requirements": null, "uri": null}}

@@ -425,6 +425,8 @@ if __name__ == '__main__':
     parser = createParser()
     namespace = parser.parse_args()
 
+    print("mik32-uploader v0.2.0")
+
     if namespace.filepath:
         upload_file(
             namespace.filepath,
