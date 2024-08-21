@@ -8,11 +8,11 @@ from enum import Enum
 from typing import List, Dict, NamedTuple, Union
 from hex_parser import FirmwareFile, MemorySection, MemoryType, Segment
 from tclrpc import OpenOcdTclRpc, TclException
-from mik32_gpio import MIK32_Version, gpio_init, gpio_deinit
-import mik32_eeprom
-import mik32_spifi
-import mik32_ram
-import mik32_pm
+from mik32_debug_hal.gpio import MIK32_Version, gpio_init, gpio_deinit
+import mik32_debug_hal.eeprom as eeprom
+import mik32_debug_hal.spifi as spifi
+import mik32_debug_hal.ram as ram
+import mik32_debug_hal.power_manager as power_manager
 from parsers import *
 import logging
 import sys
@@ -242,14 +242,14 @@ def upload_file(
 
             logging.debug("OpenOCD configured!")
 
-            mik32_pm.pm_init(openocd)
+            power_manager.pm_init(openocd)
 
             logging.debug("PM configured!")
 
             if (pages.pages_eeprom.__len__() > 0):
                 start_time = time.perf_counter()
 
-                result |= mik32_eeprom.write_pages(
+                result |= eeprom.write_pages(
                     pages.pages_eeprom, openocd)
 
                 write_time = time.perf_counter() - start_time
@@ -263,7 +263,7 @@ def upload_file(
                 gpio_init(openocd, mik_version)
                 start_time = time.perf_counter()
 
-                result |= mik32_spifi.write_pages(
+                result |= spifi.write_pages(
                     pages.pages_spifi, openocd, use_quad_spi=use_quad_spi)
 
                 write_time = time.perf_counter() - start_time
@@ -278,7 +278,7 @@ def upload_file(
             segments_ram = list(filter(
                 lambda segment: (segment.memory is not None) and (segment.memory.type == MemoryType.RAM), segments))
             if (segments_ram.__len__() > 0):
-                mik32_ram.write_segments(segments_ram, openocd)
+                ram.write_segments(segments_ram, openocd)
                 result |= 0
 
             openocd.run(post_action)

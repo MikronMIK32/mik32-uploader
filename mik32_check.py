@@ -6,12 +6,12 @@ import sys
 import time
 from typing import List, Union
 
-from mik32_pm import pm_init
+from mik32_debug_hal.power_manager import pm_init
 from mik32_upload import BootMode, Pages, form_pages, openocd_exec_path, openocd_scripts_path, openocd_interface_path, openocd_target_path, adapter_default_speed, run_openocd, default_post_action, default_log_path, default_openocd_host, mik32v0_sections, OpenOCDStartupException, adapter_speed_not_supported, memory_page_size
-from mik32_gpio import MIK32_Version, gpio_init, gpio_deinit
-import mik32_eeprom
-import mik32_spifi
-import mik32_ram
+from mik32_debug_hal.gpio import MIK32_Version, gpio_init, gpio_deinit
+import mik32_debug_hal.eeprom as eeprom
+import mik32_debug_hal.spifi as spifi
+import mik32_debug_hal.ram as ram
 from hex_parser import FirmwareFile, MemoryType, Segment
 from tclrpc import OpenOcdTclRpc, TclException
 
@@ -80,7 +80,7 @@ def upload_file(
             if (pages.pages_eeprom.__len__() > 0):
                 start_time = time.perf_counter()
 
-                result |= mik32_eeprom.check_pages(
+                result |= eeprom.check_pages(
                     pages.pages_eeprom, openocd)
 
                 write_time = time.perf_counter() - start_time
@@ -92,7 +92,7 @@ def upload_file(
                 gpio_init(openocd, mik_version)
                 start_time = time.perf_counter()
 
-                result |= mik32_spifi.check_pages(
+                result |= spifi.check_pages(
                     pages.pages_spifi, openocd, use_quad_spi=use_quad_spi)
 
                 write_time = time.perf_counter() - start_time
@@ -105,7 +105,7 @@ def upload_file(
             segments_ram = list(filter(
                 lambda segment: (segment.memory is not None) and (segment.memory.type == MemoryType.RAM), segments))
             if (segments_ram.__len__() > 0):
-                mik32_ram.check_segments(segments_ram, openocd)
+                ram.check_segments(segments_ram, openocd)
                 result |= 0
 
             openocd.run(post_action)
