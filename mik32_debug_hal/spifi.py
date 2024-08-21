@@ -6,54 +6,10 @@ from typing import Dict, List, Union
 import time
 from tclrpc import TclException
 from tclrpc import OpenOcdTclRpc
-from mik32_debug_hal.dma import DMA, ChannelMode, ChannelIndex, ChannelAck, ChannelIncrement, ChannelPriority, ChannelRequest, ChannelSize
 import mik32_debug_hal.registers.memory_map as mem_map
 import mik32_debug_hal.registers.bitfields.spifi as spifi_fields
-
-# --------------------------
-# Commands
-# --------------------------
-SREG1_BUSY = 1
-
-READ_LEN = 256
-TIMEOUT = 1000
-
-ENABLE_RESET_COMMAND = 0x66
-RESET_COMMAND = 0x99
-
-CHIP_ERASE_COMMAND = 0xC7
-SECTOR_ERASE_COMMAND = 0x20
-
-WRITE_ENABLE_COMMAND = 0x06
-WRITE_DISABLE_COMMAND = 0x04
-
-#DISABLE_QPI_COMMAND = 0xFF
-
-MEM_CONFIG_COMMAND = 0x61
-MEM_CONFIG_VALUE = 0x7F
-
-READ_DATA_COMMAND = 0x03
-
-FAST_READ_QUAD_OUTPUT_COMMAND = 0x6B
-
-READ_SREG1_COMMAND = 0x05
-READ_SREG2_COMMAND = 0x35
-WRITE_SREG_COMMAND = 0x01
-
-SREG2_QUAD_ENABLE = 9
-SREG2_QUAD_ENABLE_S = (SREG2_QUAD_ENABLE-8)
-SREG2_QUAD_ENABLE_M = 1 << SREG2_QUAD_ENABLE_S
-
-PAGE_PROGRAM_COMMAND = 0x02
-
-QUAD_PAGE_PROGRAM_COMMAND = 0x32
-
-JEDEC_ID_COMMAND = 0x9F
-
-
-class SREG_Num(Enum):
-    SREG1 = 0x00
-    SREG2 = 0x30
+import mik32_debug_hal.dma as dma
+import flash_drivers.generic_flash as generic_flash
 
 
 def spifi_intrq_clear(openocd: OpenOcdTclRpc):
@@ -63,10 +19,12 @@ def spifi_intrq_clear(openocd: OpenOcdTclRpc):
 
 INIT_DELAY = 0.001
 
+TIMEOUT = 1.0
 
-def spifi_init_periphery(openocd: OpenOcdTclRpc):
+
+def init_periphery(openocd: OpenOcdTclRpc):
     openocd.write_word(mem_map.SPIFI_CONFIG_STAT, openocd.read_word(mem_map.SPIFI_CONFIG_STAT) |
-                    #    SPIFI_CONFIG_STAT_INTRQ_M |
+                       #    SPIFI_CONFIG_STAT_INTRQ_M |
                        spifi_fields.SPIFI_CONFIG_STAT_RESET_M)
     # openocd.write_word(SPIFI_CONFIG_CTRL, openocd.read_word(
     #     SPIFI_CONFIG_CTRL) | (7 << SPIFI_CONFIG_CTRL_SCK_DIV_S))
@@ -77,10 +35,10 @@ def spifi_init_periphery(openocd: OpenOcdTclRpc):
     time.sleep(INIT_DELAY)
 
 
-def spifi_init(openocd: OpenOcdTclRpc):
+def init(openocd: OpenOcdTclRpc):
     print("MCU clock init", flush=True)
 
-    spifi_init_periphery(openocd)
+    init_periphery(openocd)
 
     control = openocd.read_word(mem_map.SPIFI_CONFIG_CTRL)
     control |= spifi_fields.SPIFI_CONFIG_CTRL_DMAEN_M
@@ -89,7 +47,7 @@ def spifi_init(openocd: OpenOcdTclRpc):
     time.sleep(INIT_DELAY)
 
 
-def spifi_init_memory(openocd: OpenOcdTclRpc):
+def init_memory(openocd: OpenOcdTclRpc):
     openocd.write_word(mem_map.SPIFI_CONFIG_STAT, openocd.read_word(mem_map.SPIFI_CONFIG_STAT) |
                        spifi_fields.SPIFI_CONFIG_STAT_INTRQ_M |
                        spifi_fields.SPIFI_CONFIG_STAT_RESET_M)
@@ -99,29 +57,22 @@ def spifi_init_memory(openocd: OpenOcdTclRpc):
     openocd.write_word(mem_map.SPIFI_CONFIG_IDATA, 0x00)
     openocd.write_word(mem_map.SPIFI_CONFIG_CLIMIT, 0x00)
     openocd.write_word(mem_map.SPIFI_CONFIG_MCMD, (0 << spifi_fields.SPIFI_CONFIG_MCMD_INTLEN_S) |
-                             (spifi_fields.SPIFI_CONFIG_CMD_FIELDFORM_ALL_SERIAL << spifi_fields.SPIFI_CONFIG_MCMD_FIELDFORM_S) |
-                             (spifi_fields.SPIFI_CONFIG_CMD_FRAMEFORM_OPCODE_3ADDR << spifi_fields.SPIFI_CONFIG_MCMD_FRAMEFORM_S) |
-                             (READ_DATA_COMMAND << spifi_fields.SPIFI_CONFIG_MCMD_OPCODE_S))
-    
+                       (spifi_fields.SPIFI_CONFIG_CMD_FIELDFORM_ALL_SERIAL << spifi_fields.SPIFI_CONFIG_MCMD_FIELDFORM_S) |
+                       (spifi_fields.SPIFI_CONFIG_CMD_FRAMEFORM_OPCODE_3ADDR << spifi_fields.SPIFI_CONFIG_MCMD_FRAMEFORM_S) |
+                       (generic_flash.READ_DATA_COMMAND << spifi_fields.SPIFI_CONFIG_MCMD_OPCODE_S))
+
     time.sleep(INIT_DELAY)
 
 
-def SPIFI_WaitIntrqTimeout(openocd: OpenOcdTclRpc, timeout: int) -> int:
-    timeout_inner = timeout
-    while timeout_inner:
-        timeout_inner -= 1
-        if (openocd.read_word(mem_map.SPIFI_CONFIG_STAT) & spifi_fields.SPIFI_CONFIG_STAT_INTRQ_M) != 0:
-            return 1
-    return 0
-
-
 def spifi_wait_intrq_timeout(openocd: OpenOcdTclRpc, error_message: str):
-    if SPIFI_WaitIntrqTimeout(openocd, TIMEOUT) == 0:
-        raise Exception(error_message)
-        return
+    time_end = time.perf_counter() + TIMEOUT
+    while time.perf_counter() < time_end:
+        if (openocd.read_word(mem_map.SPIFI_CONFIG_STAT) & spifi_fields.SPIFI_CONFIG_STAT_INTRQ_M) != 0:
+            return
+    raise Exception(error_message)
 
 
-class SPIFI_Frameform(Enum):
+class Frameform(Enum):
     RESERVED = 0
     OPCODE_NOADDR = 1
     OPCODE_1ADDR = 2
@@ -132,33 +83,33 @@ class SPIFI_Frameform(Enum):
     NOOPCODE_4ADDR = 7
 
 
-class SPIFI_Fieldform(Enum):
+class Fieldform(Enum):
     ALL_SERIAL = 0
     DATA_PARALLEL = 1
     OPCODE_SERIAL = 2
     ALL_PARALLEL = 3
 
 
-class SPIFI_Direction(Enum):
+class Direction(Enum):
     READ = 0
     WRITE = 1
 
 
-def spifi_send_command(
+def send_command(
         openocd: OpenOcdTclRpc,
         cmd: int,
-        frameform: SPIFI_Frameform,
-        fieldform: SPIFI_Fieldform,
+        frameform: Frameform,
+        fieldform: Fieldform,
         byte_count=0,
         address=0,
         idata=0,
         cache_limit=0,
         idata_length=0,
-        direction=SPIFI_Direction.READ,
+        direction=Direction.READ,
         data: List[int] = [],
-        dma: Union[DMA, None] = None
+        dma: Union[dma.DMA, None] = None
 ) -> List[int]:
-    if (dma is not None) and (direction == SPIFI_Direction.WRITE):
+    if (dma is not None) and (direction == Direction.WRITE):
         openocd.write_memory(0x02003F00, 8, data)
 
         dma.channels[0].start(
@@ -166,7 +117,7 @@ def spifi_send_command(
             mem_map.SPIFI_CONFIG_DATA32,
             255
         )
-    elif (dma is not None) and (direction == SPIFI_Direction.READ):
+    elif (dma is not None) and (direction == Direction.READ):
         dma.channels[1].start(
             mem_map.SPIFI_CONFIG_DATA32,
             0x02003F00,
@@ -174,15 +125,6 @@ def spifi_send_command(
         )
 
     openocd.write_memory(mem_map.SPIFI_CONFIG_ADDR, 32, [address, idata])
-    
-    # # spifi_intrq_clear(openocd)
-    # openocd.write_word(SPIFI_CONFIG_CMD, (cmd << SPIFI_CONFIG_CMD_OPCODE_S) |
-    #                    (frameform.value << SPIFI_CONFIG_CMD_FRAMEFORM_S) |
-    #                    (fieldform.value << SPIFI_CONFIG_CMD_FIELDFORM_S) |
-    #                    (byte_count << SPIFI_CONFIG_CMD_DATALEN_S) |
-    #                    (idata_length << SPIFI_CONFIG_CMD_INTLEN_S) |
-    #                    (direction.value << SPIFI_CONFIG_CMD_DOUT_S))
-    # # spifi_wait_intrq_timeout(openocd, "Timeout executing write enable command")
 
     cmd_write_value = ((cmd << spifi_fields.SPIFI_CONFIG_CMD_OPCODE_S) |
                        (frameform.value << spifi_fields.SPIFI_CONFIG_CMD_FRAMEFORM_S) |
@@ -193,7 +135,7 @@ def spifi_send_command(
 
     openocd.write_memory(mem_map.SPIFI_CONFIG_CMD, 32, [cmd_write_value])
 
-    if direction == SPIFI_Direction.READ:
+    if direction == Direction.READ:
         out_list = []
         if dma is not None:
             dma.dma_wait(dma.channels[1], 0.1)
@@ -202,174 +144,42 @@ def spifi_send_command(
             return out_list
         else:
             for i in range(byte_count):
-                out_list.append(openocd.read_memory(mem_map.SPIFI_CONFIG_DATA32, 8, 1)[0])
+                out_list.append(openocd.read_memory(
+                    mem_map.SPIFI_CONFIG_DATA32, 8, 1)[0])
             return out_list
 
-    if direction == SPIFI_Direction.WRITE:
+    if direction == Direction.WRITE:
         if dma is not None:
             dma.dma_wait(dma.channels[0], 0.1)
         else:
             if (byte_count % 4) == 0:
                 for i in range(0, byte_count, 4):
                     openocd.write_memory(mem_map.SPIFI_CONFIG_DATA32, 32, [
-                                        data[i] + data[i+1] * 256 + data[i+2] * 256 * 256 + data[i+3] * 256 * 256 * 256])
+                        data[i] + data[i+1] * 256 + data[i+2] * 256 * 256 + data[i+3] * 256 * 256 * 256])
             else:
                 for i in range(byte_count):
-                    openocd.write_memory(mem_map.SPIFI_CONFIG_DATA32, 8, [data[i]])
+                    openocd.write_memory(
+                        mem_map.SPIFI_CONFIG_DATA32, 8, [data[i]])
 
     return []
 
 
-def spifi_write_enable(openocd: OpenOcdTclRpc):
-    spifi_send_command(openocd, WRITE_ENABLE_COMMAND,
-                       SPIFI_Frameform.OPCODE_NOADDR, SPIFI_Fieldform.ALL_SERIAL)
-
-
-def spifi_read_sreg(openocd: OpenOcdTclRpc, sreg: SREG_Num) -> int:
-    return spifi_send_command(
-        openocd, 
-        READ_SREG1_COMMAND | sreg.value, 
-        SPIFI_Frameform.OPCODE_NOADDR, 
-        SPIFI_Fieldform.ALL_SERIAL, 
-        byte_count=1
-    )[0]
-
-
-def spifi_write_sreg(openocd: OpenOcdTclRpc, sreg1: int, sreg2: int):
-#    spifi_send_command(openocd, DISABLE_QPI_COMMAND,
-#                       SPIFI_Frameform.OPCODE_NOADDR, SPIFI_Fieldform.ALL_PARALLEL)
-    spifi_write_enable(openocd)
-    spifi_send_command(
-        openocd, 
-        WRITE_SREG_COMMAND, 
-        SPIFI_Frameform.OPCODE_NOADDR, 
-        SPIFI_Fieldform.ALL_SERIAL, 
-        byte_count=2, 
-        direction=SPIFI_Direction.WRITE, 
-        data=[sreg1, sreg2]
-    )
-    spifi_wait_busy(openocd)
-
-
-def spifi_wait_busy(openocd: OpenOcdTclRpc):
-    while 1:
-        sreg1 = spifi_read_sreg(openocd, SREG_Num.SREG1)
-        if not (sreg1 & SREG1_BUSY):
-            break
-
-RESET_DELAY = 0.001
-
-def spifi_chip_reset(openocd: OpenOcdTclRpc):
-    #print("Sending 'Reset' to external chip in SPI mode", flush=True)
-    spifi_send_command(openocd, ENABLE_RESET_COMMAND,
-                       SPIFI_Frameform.OPCODE_NOADDR, SPIFI_Fieldform.ALL_SERIAL)
-    spifi_send_command(openocd, RESET_COMMAND,
-                       SPIFI_Frameform.OPCODE_NOADDR, SPIFI_Fieldform.ALL_SERIAL)
-    time.sleep(RESET_DELAY)
-
-
-def spifi_chip_reset_qpi(openocd: OpenOcdTclRpc):
-    #print("Sending 'Reset' to external chip in QPI mode", flush=True)
-    spifi_send_command(openocd, ENABLE_RESET_COMMAND,
-                       SPIFI_Frameform.OPCODE_NOADDR, SPIFI_Fieldform.ALL_PARALLEL)
-    spifi_send_command(openocd, RESET_COMMAND,
-                       SPIFI_Frameform.OPCODE_NOADDR, SPIFI_Fieldform.ALL_PARALLEL)
-    time.sleep(RESET_DELAY)
-
-#def spifi_chip_disable_qpi(openocd: OpenOcdTclRpc):
-    #print("Sending 'Disable QPI' command to external flash chip in QPI mode.", flush=True)
-#    spifi_send_command(openocd, DISABLE_QPI_COMMAND,
-#                       SPIFI_Frameform.OPCODE_NOADDR, SPIFI_Fieldform.ALL_PARALLEL)
-
-
-def spifi_chip_erase(openocd: OpenOcdTclRpc):
-    print("Chip erase...", flush=True)
-    spifi_send_command(openocd, CHIP_ERASE_COMMAND,
-                       SPIFI_Frameform.OPCODE_NOADDR, SPIFI_Fieldform.ALL_SERIAL)
-
-
-def spifi_sector_erase(openocd: OpenOcdTclRpc, address: int):
-    print(f"Erase sector {address:#010x}...", flush=True)
-    spifi_send_command(openocd, SECTOR_ERASE_COMMAND,
-                       SPIFI_Frameform.OPCODE_3ADDR, SPIFI_Fieldform.ALL_SERIAL, address=address)
-
-
-def spifi_read_data(openocd: OpenOcdTclRpc, address: int, byte_count: int, bin_data: List[int], dma: Union[DMA, None] = None, use_quad_spi=False) -> int:
-    read_data: List[int] = []
-
-    if (use_quad_spi):
-        read_data = spifi_send_command(openocd, FAST_READ_QUAD_OUTPUT_COMMAND, SPIFI_Frameform.OPCODE_3ADDR, SPIFI_Fieldform.DATA_PARALLEL, byte_count=byte_count, address=address, idata_length=1, dma=dma)
-    else:
-        read_data = spifi_send_command(openocd, READ_DATA_COMMAND, SPIFI_Frameform.OPCODE_3ADDR, SPIFI_Fieldform.ALL_SERIAL, byte_count=byte_count, address=address, dma=dma)
-
-    for i in range(byte_count):
-        if read_data[i] != bin_data[i]:
-            print(
-                f"DATA[{i+address}] = {read_data[i]:#0x} expect {bin_data[i]:#0x}", flush=True)
-            
-            # spifi_init_periphery(openocd)
-            # read_periph = spifi_send_command(openocd, READ_DATA_COMMAND, SPIFI_Frameform.OPCODE_3ADDR,
-            #                        SPIFI_Fieldform.ALL_SERIAL, byte_count=1, address=(i+address))
-            # print(
-            #     f"DATA[{i+address}] = {read_periph[0]:#0x} expect {bin_data[i]:#0x}", flush=True)
-
-            return 1
-
-    return 0
-
-
-def spifi_page_program(
-        openocd: OpenOcdTclRpc,
-        ByteAddress: int,
-        data: List[int],
-        byte_count: int,
-        progress: str = "",
-        dma: Union[DMA, None] = None
-):
-    print(f"Writing Flash page {ByteAddress:#010x}... {progress}", flush=True)
-    if byte_count > 256:
-        raise Exception("Byte count more than 256")
-
-    spifi_write_enable(openocd)
-    spifi_send_command(openocd, PAGE_PROGRAM_COMMAND, SPIFI_Frameform.OPCODE_3ADDR,
-                       SPIFI_Fieldform.ALL_SERIAL, byte_count=byte_count, address=ByteAddress,
-                       idata=0, cache_limit=0, direction=SPIFI_Direction.WRITE, data=data, dma=dma)
-    spifi_wait_busy(openocd)
-
-
-class EraseType(Enum):
-    CHIP_ERASE = CHIP_ERASE_COMMAND
-    SECTOR_ERASE = SECTOR_ERASE_COMMAND
-
-
-def spifi_erase(openocd, erase_type: EraseType = EraseType.CHIP_ERASE, sectors: List[int] = []):
-    if erase_type == EraseType.CHIP_ERASE:
-        spifi_write_enable(openocd)
-        spifi_chip_erase(openocd)
-        spifi_wait_busy(openocd)
-    elif erase_type == EraseType.SECTOR_ERASE:
-        for sector in sectors:
-            spifi_write_enable(openocd)
-            spifi_sector_erase(openocd, sector)
-            spifi_wait_busy(openocd)
-
-
-def spifi_write(openocd: OpenOcdTclRpc, address: int, data: List[int], data_len: int):
+def write(openocd: OpenOcdTclRpc, address: int, data: List[int], data_len: int):
     if data_len > 256:
         raise Exception("Byte count more than 256")
 
-    spifi_page_program(openocd, address, data, data_len)
+    generic_flash.page_program(openocd, address, data, data_len)
 
     print("written")
 
 
-def spifi_write_file(bytes: List[int], openocd: OpenOcdTclRpc):
+def write_file(bytes: List[int], openocd: OpenOcdTclRpc):
     # print(bytes)
     print(f"Write {len(bytes)} bytes")
 
     openocd.halt()
-    spifi_init(openocd)
-    spifi_erase(openocd)
+    init(openocd)
+    generic_flash.erase(openocd)
     print("bin_data_len = ", len(bytes))
     address = 0
 
@@ -377,60 +187,19 @@ def spifi_write_file(bytes: List[int], openocd: OpenOcdTclRpc):
         if ((address + 256) > len(bytes)):
             break
         print("address = ", address)
-        spifi_write(openocd, address, bytes, 256)
-        if spifi_read_data(openocd, address, 256, bytes) == 1:
+        write(openocd, address, bytes, 256)
+        if generic_flash.read_data(openocd, address, 256, bytes) == 1:
             return 1
 
     if (len(bytes) % 256) != 0:
         print(
             f"address = {address}, +{len(bytes) - address-1}[{address + len(bytes) - address-1}]")
-        spifi_write(openocd, address, bytes, len(bytes) - address)
-        if spifi_read_data(openocd, address, len(bytes) - address, bytes) == 1:
+        write(openocd, address, bytes, len(bytes) - address)
+        if generic_flash.read_data(openocd, address, len(bytes) - address, bytes) == 1:
             return 1
     print("end")
 
     return 0
-
-
-def spifi_quad_page_program(
-    openocd: OpenOcdTclRpc,
-    ByteAddress: int,
-    data: List[int],
-    byte_count: int,
-    progress: str = "",
-    dma: Union[DMA, None] = None
-):
-    print(f"Writing page {ByteAddress:#010x}... {progress}", flush=True)
-    if byte_count > 256:
-        raise Exception("Byte count more than 256")
-
-    spifi_write_enable(openocd)
-    spifi_send_command(openocd, QUAD_PAGE_PROGRAM_COMMAND, SPIFI_Frameform.OPCODE_3ADDR,
-                       SPIFI_Fieldform.DATA_PARALLEL, byte_count=byte_count, address=ByteAddress,
-                       idata=0, cache_limit=0, direction=SPIFI_Direction.WRITE, data=data, dma=dma)
-    spifi_wait_busy(openocd)
-
-
-def spifi_quad_enable(openocd):
-    if (spifi_check_quad_enable(openocd) != True):
-        spifi_write_sreg(
-            openocd, 
-            spifi_read_sreg(openocd, SREG_Num.SREG1), 
-            spifi_read_sreg(openocd, SREG_Num.SREG2) | SREG2_QUAD_ENABLE_M
-        )
-
-
-#def spifi_quad_disable(openocd):
-#    if (spifi_check_quad_enable(openocd) == True):
-#        spifi_write_sreg(
-#            openocd, 
-#            spifi_read_sreg(openocd, SREG_Num.SREG1), 
-#            spifi_read_sreg(openocd, SREG_Num.SREG2) & (0xFF ^ SREG2_QUAD_ENABLE_M)
-#        )
-
-
-def spifi_check_quad_enable(openocd):
-    return (spifi_read_sreg(openocd, SREG_Num.SREG2) & SREG2_QUAD_ENABLE_M) != 0
 
 
 def get_segments_list(pages_offsets: List[int], segment_size: int) -> List[int]:
@@ -444,62 +213,63 @@ def check_pages(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc, use_quad_sp
     result = 0
 
     openocd.halt()
-    spifi_init(openocd)
-    
-    # Сбрасываем микросхему в режиме QPI из всех состояний в нормальный SPI режим.
-    spifi_chip_reset_qpi(openocd)
-    
-    # Сбрасываем микросхему в режиме SPI из всех состояний в нормальный SPI режим.
-    spifi_chip_reset(openocd)
+    init(openocd)
 
-    JEDEC_ID = spifi_send_command(openocd, JEDEC_ID_COMMAND, SPIFI_Frameform.OPCODE_NOADDR, SPIFI_Fieldform.ALL_SERIAL, 3)
+    # Сбрасываем микросхему в режиме QPI из всех состояний в нормальный SPI режим.
+    generic_flash.chip_reset_qpi(openocd)
+
+    # Сбрасываем микросхему в режиме SPI из всех состояний в нормальный SPI режим.
+    generic_flash.chip_reset(openocd)
+
+    JEDEC_ID = send_command(openocd, generic_flash.JEDEC_ID_COMMAND,
+                                  Frameform.OPCODE_NOADDR, Fieldform.ALL_SERIAL, 3)
 
     print(f"JEDEC ID = {JEDEC_ID[0]:02x} {JEDEC_ID[1]:02x} {JEDEC_ID[2]:02x}")
 
-    dma = DMA(openocd)
-    dma.init()
+    dma_instance = dma.DMA(openocd)
+    dma_instance.init()
 
-    dma.channels[0].write_buffer = 0
+    dma_instance.channels[0].write_buffer = 0
 
-    dma.channels[0].channel = ChannelIndex.CHANNEL_0
-    dma.channels[0].priority = ChannelPriority.VERY_HIGH
+    dma_instance.channels[0].channel = dma.ChannelIndex.CHANNEL_0
+    dma_instance.channels[0].priority = dma.ChannelPriority.VERY_HIGH
 
-    dma.channels[0].read_mode = ChannelMode.MEMORY
-    dma.channels[0].read_increment = ChannelIncrement.ENABLE
-    dma.channels[0].read_size = ChannelSize.WORD
-    dma.channels[0].read_burst_size = 2
-    dma.channels[0].read_request = ChannelRequest.SPIFI_REQUEST
-    dma.channels[0].read_ack = ChannelAck.DISABLE
+    dma_instance.channels[0].read_mode = dma.ChannelMode.MEMORY
+    dma_instance.channels[0].read_increment = dma.ChannelIncrement.ENABLE
+    dma_instance.channels[0].read_size = dma.ChannelSize.WORD
+    dma_instance.channels[0].read_burst_size = 2
+    dma_instance.channels[0].read_request = dma.ChannelRequest.SPIFI_REQUEST
+    dma_instance.channels[0].read_ack = dma.ChannelAck.DISABLE
 
-    dma.channels[0].write_mode = ChannelMode.PERIPHERY
-    dma.channels[0].write_increment = ChannelIncrement.DISABLE
-    dma.channels[0].write_size = ChannelSize.WORD
-    dma.channels[0].write_burst_size = 2
-    dma.channels[0].write_request = ChannelRequest.SPIFI_REQUEST
-    dma.channels[0].write_ack = ChannelAck.DISABLE
+    dma_instance.channels[0].write_mode = dma.ChannelMode.PERIPHERY
+    dma_instance.channels[0].write_increment = dma.ChannelIncrement.DISABLE
+    dma_instance.channels[0].write_size = dma.ChannelSize.WORD
+    dma_instance.channels[0].write_burst_size = 2
+    dma_instance.channels[0].write_request = dma.ChannelRequest.SPIFI_REQUEST
+    dma_instance.channels[0].write_ack = dma.ChannelAck.DISABLE
 
-    dma.channels[1].write_buffer = 0
+    dma_instance.channels[1].write_buffer = 0
 
-    dma.channels[1].channel = ChannelIndex.CHANNEL_1
-    dma.channels[1].priority = ChannelPriority.VERY_HIGH
+    dma_instance.channels[1].channel = dma.ChannelIndex.CHANNEL_1
+    dma_instance.channels[1].priority = dma.ChannelPriority.VERY_HIGH
 
-    dma.channels[1].write_mode = ChannelMode.MEMORY
-    dma.channels[1].write_increment = ChannelIncrement.ENABLE
-    dma.channels[1].write_size = ChannelSize.WORD
-    dma.channels[1].write_burst_size = 2
-    dma.channels[1].write_request = ChannelRequest.SPIFI_REQUEST
-    dma.channels[1].write_ack = ChannelAck.DISABLE
+    dma_instance.channels[1].write_mode = dma.ChannelMode.MEMORY
+    dma_instance.channels[1].write_increment = dma.ChannelIncrement.ENABLE
+    dma_instance.channels[1].write_size = dma.ChannelSize.WORD
+    dma_instance.channels[1].write_burst_size = 2
+    dma_instance.channels[1].write_request = dma.ChannelRequest.SPIFI_REQUEST
+    dma_instance.channels[1].write_ack = dma.ChannelAck.DISABLE
 
-    dma.channels[1].read_mode = ChannelMode.PERIPHERY
-    dma.channels[1].read_increment = ChannelIncrement.DISABLE
-    dma.channels[1].read_size = ChannelSize.WORD
-    dma.channels[1].read_burst_size = 2
-    dma.channels[1].read_request = ChannelRequest.SPIFI_REQUEST
-    dma.channels[1].read_ack = ChannelAck.DISABLE
+    dma_instance.channels[1].read_mode = dma.ChannelMode.PERIPHERY
+    dma_instance.channels[1].read_increment = dma.ChannelIncrement.DISABLE
+    dma_instance.channels[1].read_size = dma.ChannelSize.WORD
+    dma_instance.channels[1].read_burst_size = 2
+    dma_instance.channels[1].read_request = dma.ChannelRequest.SPIFI_REQUEST
+    dma_instance.channels[1].read_ack = dma.ChannelAck.DISABLE
 
     if (use_quad_spi):
         print("Using Quad SPI")
-        spifi_quad_enable(openocd)
+        generic_flash.quad_enable(openocd)
     else:
         print("Using Single SPI")
     #    spifi_quad_disable(openocd)
@@ -507,14 +277,16 @@ def check_pages(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc, use_quad_sp
     pages_offsets = list(pages)
 
     for index, page_offset in enumerate(pages_offsets):
-        print(f"Check page {page_offset:#010x}... {(index*100)//pages_offsets.__len__()}%", flush=True)
+        print(
+            f"Check page {page_offset:#010x}... {(index*100)//pages_offsets.__len__()}%", flush=True)
         page_bytes = pages[page_offset]
 
-        result = spifi_read_data(openocd, page_offset, 256, page_bytes, dma=dma, use_quad_spi=use_quad_spi)
+        result = generic_flash.read_data(
+            openocd, page_offset, 256, page_bytes, dma=dma_instance, use_quad_spi=use_quad_spi)
 
         if result == 1:
             print("Data error")
-            #if (use_quad_spi):
+            # if (use_quad_spi):
             #    spifi_quad_disable(openocd)
             return result
 
@@ -526,6 +298,7 @@ def check_pages(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc, use_quad_sp
 # import cProfile, pstats, io
 # from pstats import SortKey
 
+
 def write_pages(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc, use_quad_spi=False, use_chip_erase=False):
     result = 0
 
@@ -535,64 +308,65 @@ def write_pages(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc, use_quad_sp
     # # PROFILING INIT END
 
     openocd.halt()
-    spifi_init(openocd)
-    
-    # Сбрасываем микросхему в режиме QPI из всех состояний в нормальный SPI режим.
-    spifi_chip_reset_qpi(openocd)
-    
-    # Сбрасываем микросхему в режиме SPI из всех состояний в нормальный SPI режим.
-    spifi_chip_reset(openocd)
+    init(openocd)
 
-    JEDEC_ID = spifi_send_command(openocd, JEDEC_ID_COMMAND, SPIFI_Frameform.OPCODE_NOADDR, SPIFI_Fieldform.ALL_SERIAL, 3)
+    # Сбрасываем микросхему в режиме QPI из всех состояний в нормальный SPI режим.
+    generic_flash.chip_reset_qpi(openocd)
+
+    # Сбрасываем микросхему в режиме SPI из всех состояний в нормальный SPI режим.
+    generic_flash.chip_reset(openocd)
+
+    JEDEC_ID = send_command(openocd, generic_flash.JEDEC_ID_COMMAND,
+                                  Frameform.OPCODE_NOADDR, Fieldform.ALL_SERIAL, 3)
 
     print(f"JEDEC ID = {JEDEC_ID[0]:02x} {JEDEC_ID[1]:02x} {JEDEC_ID[2]:02x}")
 
-    dma = DMA(openocd)
-    dma.init()
+    dma_instance = dma.DMA(openocd)
+    dma_instance.init()
 
-    dma.channels[0].write_buffer = 0
+    dma_instance.channels[0].write_buffer = 0
 
-    dma.channels[0].channel = ChannelIndex.CHANNEL_0
-    dma.channels[0].priority = ChannelPriority.VERY_HIGH
+    dma_instance.channels[0].channel = dma.ChannelIndex.CHANNEL_0
+    dma_instance.channels[0].priority = dma.ChannelPriority.VERY_HIGH
 
-    dma.channels[0].read_mode = ChannelMode.MEMORY
-    dma.channels[0].read_increment = ChannelIncrement.ENABLE
-    dma.channels[0].read_size = ChannelSize.WORD
-    dma.channels[0].read_burst_size = 2
-    dma.channels[0].read_request = ChannelRequest.SPIFI_REQUEST
-    dma.channels[0].read_ack = ChannelAck.DISABLE
+    dma_instance.channels[0].read_mode = dma.ChannelMode.MEMORY
+    dma_instance.channels[0].read_increment = dma.ChannelIncrement.ENABLE
+    dma_instance.channels[0].read_size = dma.ChannelSize.WORD
+    dma_instance.channels[0].read_burst_size = 2
+    dma_instance.channels[0].read_request = dma.ChannelRequest.SPIFI_REQUEST
+    dma_instance.channels[0].read_ack = dma.ChannelAck.DISABLE
 
-    dma.channels[0].write_mode = ChannelMode.PERIPHERY
-    dma.channels[0].write_increment = ChannelIncrement.DISABLE
-    dma.channels[0].write_size = ChannelSize.WORD
-    dma.channels[0].write_burst_size = 2
-    dma.channels[0].write_request = ChannelRequest.SPIFI_REQUEST
-    dma.channels[0].write_ack = ChannelAck.DISABLE
+    dma_instance.channels[0].write_mode = dma.ChannelMode.PERIPHERY
+    dma_instance.channels[0].write_increment = dma.ChannelIncrement.DISABLE
+    dma_instance.channels[0].write_size = dma.ChannelSize.WORD
+    dma_instance.channels[0].write_burst_size = 2
+    dma_instance.channels[0].write_request = dma.ChannelRequest.SPIFI_REQUEST
+    dma_instance.channels[0].write_ack = dma.ChannelAck.DISABLE
 
-    dma.channels[1].write_buffer = 0
+    dma_instance.channels[1].write_buffer = 0
 
-    dma.channels[1].channel = ChannelIndex.CHANNEL_1
-    dma.channels[1].priority = ChannelPriority.VERY_HIGH
+    dma_instance.channels[1].channel = dma.ChannelIndex.CHANNEL_1
+    dma_instance.channels[1].priority = dma.ChannelPriority.VERY_HIGH
 
-    dma.channels[1].write_mode = ChannelMode.MEMORY
-    dma.channels[1].write_increment = ChannelIncrement.ENABLE
-    dma.channels[1].write_size = ChannelSize.WORD
-    dma.channels[1].write_burst_size = 2
-    dma.channels[1].write_request = ChannelRequest.SPIFI_REQUEST
-    dma.channels[1].write_ack = ChannelAck.DISABLE
+    dma_instance.channels[1].write_mode = dma.ChannelMode.MEMORY
+    dma_instance.channels[1].write_increment = dma.ChannelIncrement.ENABLE
+    dma_instance.channels[1].write_size = dma.ChannelSize.WORD
+    dma_instance.channels[1].write_burst_size = 2
+    dma_instance.channels[1].write_request = dma.ChannelRequest.SPIFI_REQUEST
+    dma_instance.channels[1].write_ack = dma.ChannelAck.DISABLE
 
-    dma.channels[1].read_mode = ChannelMode.PERIPHERY
-    dma.channels[1].read_increment = ChannelIncrement.DISABLE
-    dma.channels[1].read_size = ChannelSize.WORD
-    dma.channels[1].read_burst_size = 2
-    dma.channels[1].read_request = ChannelRequest.SPIFI_REQUEST
-    dma.channels[1].read_ack = ChannelAck.DISABLE
+    dma_instance.channels[1].read_mode = dma.ChannelMode.PERIPHERY
+    dma_instance.channels[1].read_increment = dma.ChannelIncrement.DISABLE
+    dma_instance.channels[1].read_size = dma.ChannelSize.WORD
+    dma_instance.channels[1].read_burst_size = 2
+    dma_instance.channels[1].read_request = dma.ChannelRequest.SPIFI_REQUEST
+    dma_instance.channels[1].read_ack = dma.ChannelAck.DISABLE
 
     if use_chip_erase:
-        spifi_erase(openocd, EraseType.CHIP_ERASE)
+        generic_flash.erase(openocd, generic_flash.EraseType.CHIP_ERASE)
     else:
-        spifi_erase(openocd, EraseType.SECTOR_ERASE,
-                    get_segments_list(list(pages), 4*1024))
+        generic_flash.erase(openocd, generic_flash.EraseType.SECTOR_ERASE,
+                                  get_segments_list(list(pages), 4*1024))
 
         # for addr in range(0, 4096*2, 256):
         #     result = spifi_read_data(openocd, addr, 256, [0xFF]*256, dma=dma)
@@ -601,15 +375,15 @@ def write_pages(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc, use_quad_sp
         #         print("Data error")
         #         return result
 
-    print("Quad Enable", spifi_check_quad_enable(openocd))
+    print("Quad Enable", generic_flash.check_quad_enable(openocd))
 
     if (use_quad_spi):
         print("Using Quad SPI")
-        spifi_quad_enable(openocd)
+        generic_flash.quad_enable(openocd)
     else:
         print("Using Single SPI")
-        #spifi_quad_disable(openocd)
-    
+        # spifi_quad_disable(openocd)
+
     # print("SREG1", spifi_read_sreg(openocd, SREG_Num.SREG1))
     # print("SREG2", spifi_read_sreg(openocd, SREG_Num.SREG2))
 
@@ -619,19 +393,20 @@ def write_pages(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc, use_quad_sp
         page_bytes = pages[page_offset]
 
         if (use_quad_spi):
-            spifi_quad_page_program(
-                openocd, page_offset, page_bytes, 256, f"{(index*100)//pages_offsets.__len__()}%", dma=dma)
+            generic_flash.quad_page_program(
+                openocd, page_offset, page_bytes, 256, f"{(index*100)//pages_offsets.__len__()}%", dma=dma_instance)
         else:
-            spifi_page_program(openocd, page_offset, page_bytes,
-                               256, f"{(index*100)//pages_offsets.__len__()}%", dma=dma)
+            generic_flash.page_program(openocd, page_offset, page_bytes,
+                                             256, f"{(index*100)//pages_offsets.__len__()}%", dma=dma_instance)
 
-        result = spifi_read_data(openocd, page_offset, 256, page_bytes, dma=dma, use_quad_spi=use_quad_spi)
+        result = generic_flash.read_data(
+            openocd, page_offset, 256, page_bytes, dma=dma_instance, use_quad_spi=use_quad_spi)
 
         if result == 1:
             print("Data error")
             return result
 
-    #if (use_quad_spi):
+    # if (use_quad_spi):
     #    spifi_quad_disable(openocd)
 
     # # PROFILING GET STATS
@@ -649,7 +424,6 @@ def write_pages(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc, use_quad_sp
     return 0
 
 
-
 def wait_halted(openocd: OpenOcdTclRpc, timeout_seconds: float = 2) -> int:
     start_time = time.perf_counter()
     while ("halted" not in openocd.run("riscv.cpu curstate")):
@@ -665,19 +439,21 @@ def write_pages_by_sectors(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc, 
     result = 0
 
     openocd.halt()
-    spifi_init(openocd)
+    init(openocd)
 
-    JEDEC_ID = spifi_send_command(openocd, 0x9F, SPIFI_Frameform.OPCODE_NOADDR, SPIFI_Fieldform.ALL_SERIAL, 3)
+    JEDEC_ID = send_command(
+        openocd, 0x9F, Frameform.OPCODE_NOADDR, Fieldform.ALL_SERIAL, 3)
     print(f"JEDEC_ID {JEDEC_ID[0]:02x} {JEDEC_ID[1]:02x} {JEDEC_ID[2]:02x}")
 
     sectors_list = get_segments_list(list(pages), 4*1024)
 
     openocd.halt()
-    pathname = os.path.dirname(sys.argv[0]) 
-    
+    pathname = os.path.dirname(sys.argv[0])
+
     # openocd.run("load_image {%s}" % pathlib.Path(os.path.join(pathname, "firmware.hex")))
     openocd.run("rbp all")
-    openocd.run("load_image {%s}" % pathlib.Path("C:\\Users\\user\\Documents\\PlatformIO\\Projects\\SPIFI_JTAG_driver\\.pio\\build\\mik32v2\\firmware.hex"))
+    openocd.run("load_image {%s}" % pathlib.Path(
+        "C:\\Users\\user\\Documents\\PlatformIO\\Projects\\SPIFI_JTAG_driver\\.pio\\build\\mik32v2\\firmware.hex"))
     openocd.run("bp 0x02002010 1 hw")
     openocd.resume(0x02000000)
     if wait_halted(openocd) != 0:
@@ -690,8 +466,9 @@ def write_pages_by_sectors(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc, 
         openocd.resume()
         if wait_halted(openocd) != 0:
             return 1
-        print(f"Erase sector {sector} result {openocd.read_word(0x02002008)}", flush=True)
-    
+        print(
+            f"Erase sector {sector} result {openocd.read_word(0x02002008)}", flush=True)
+
     return 1
 
     # spifi erase check
@@ -720,26 +497,28 @@ def write_pages_by_sectors(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc, 
                 bytes_list.extend(page)
             else:
                 bytes_list.extend([0]*256)
-        
+
         extend_value = 1 + sector
-        bytes_list.extend([(extend_value >> 0) & 0xFF, (extend_value >> 8) & 0xFF, (extend_value >> 16) & 0xFF, (extend_value >> 24) & 0xFF])
+        bytes_list.extend([(extend_value >> 0) & 0xFF, (extend_value >> 8)
+                          & 0xFF, (extend_value >> 16) & 0xFF, (extend_value >> 24) & 0xFF])
         # print(bytes_list)
 
         while (openocd.read_word(0x0200200c) != 1):
             openocd.resume()
             openocd.halt()
-        
+
         openocd.write_memory(0x02001000, 8, bytes_list)
         while (openocd.read_word(0x0200200c) != 1):
             openocd.resume()
             openocd.halt()
         time.sleep(0.5)
         openocd.halt()
-        print(f"Program sector {sector} result {openocd.read_word(0x02002008)}", flush=True)
+        print(
+            f"Program sector {sector} result {openocd.read_word(0x02002008)}", flush=True)
 
-    spifi_init_memory(openocd)
+    init_memory(openocd)
 
-    # check write   
+    # check write
     pages_offsets = list(pages)
     for index, page_offset in enumerate(pages_offsets):
         page_bytes = pages[page_offset]
@@ -752,7 +531,6 @@ def write_pages_by_sectors(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc, 
                 print("Data error!")
                 openocd.run("rbp 0x02002010")
                 return result
-
 
     openocd.run("rbp 0x02002010")
     if result == 0:
