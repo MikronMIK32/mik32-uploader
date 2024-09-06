@@ -1,8 +1,15 @@
 __pycache__
 .vscode
 openocd
-*.hex
 *.code-workspace
 dist
-build
 mik32_upload.spec
+/upload_drivers/jtag_spifi/.pio/build/mik32v2/hal_core
+/upload_drivers/jtag_spifi/.pio/build/mik32v2/hal_peripherals
+/upload_drivers/jtag_spifi/.pio/build/mik32v2/hal_utilities
+*.a
+*.o
+*.checksum
+*.dblite
+*.elf
+*.map

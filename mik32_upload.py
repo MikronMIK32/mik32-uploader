@@ -263,7 +263,7 @@ def upload_file(
                 gpio_init(openocd, mik_version)
                 start_time = time.perf_counter()
 
-                result |= spifi.write_pages(
+                result |= spifi.write_pages_by_sectors(
                     pages.pages_spifi, openocd, use_quad_spi=use_quad_spi)
 
                 write_time = time.perf_counter() - start_time
