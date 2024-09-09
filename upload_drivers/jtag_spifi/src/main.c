@@ -16,7 +16,7 @@ const int BUFFER4K_SIZE = 4 * 1024;
 extern uint8_t *BUFFER4K[];
 extern uint32_t *BUFFER_STATUS[];
 
-register uint32_t address asm ("x31");
+register uint32_t address asm("x31");
 
 void SystemClock_Config(void);
 
@@ -27,7 +27,7 @@ int main()
     // *BUFFER_STATUS = 1;
     SystemClock_Config();
 
-    UART_Init(UART_0, 3333, UART_CONTROL1_TE_M | UART_CONTROL1_M_8BIT_M, 0, 0);
+    UART_Init(UART_0, 287, UART_CONTROL1_TE_M | UART_CONTROL1_M_8BIT_M, 0, 0);
     xprintf("START DRIVER\n");
 
     SPIFI_HandleTypeDef spifi = {
@@ -44,17 +44,18 @@ int main()
 
     *BUFFER_STATUS = 0;
 
-    while (1) {
+    while (1)
+    {
         // asm ("wfi");
-        
+
         // *BUFFER_STATUS = 1;
 
         HAL_SPIFI_Reset(&spifi);
         HAL_SPIFI_WaitResetClear(&spifi, HAL_SPIFI_TIMEOUT);
 
-        // xprintf("ERASE SECTOR 0x%08x\n", address);
+        xprintf("ERASE SECTOR 0x%08x\n", address);
         HAL_SPIFI_W25_SectorErase4K(&spifi, address);
-    
+
         for (uint32_t ad = 0; ad < BUFFER4K_SIZE; ad += 256)
         {
             // xprintf("Write Page 0x%08x from 0x%08x\n", ad + address, (uint8_t *)((uint32_t)BUFFER4K + ad));
@@ -79,9 +80,15 @@ int main()
         int result = 0;
         for (uint32_t ad = 0; ad < BUFFER4K_SIZE; ad += 4)
         {
-            if (*(uint32_t*)(BUFFER4K + ad) != *(uint32_t*)(0x80000000 + address))
+            if (*(uint32_t *)(BUFFER4K + ad) != *(uint32_t *)(0x80000000 + address + ad))
             {
+                xprintf("addr[0x%08x] buf:mem = 0x%08x != 0x%08x\n", 0x80000000 + address + ad, *(uint32_t *)(BUFFER4K + ad), *(uint32_t *)(0x80000000 + address + ad));
                 result = 3;
+                // break;
+            }
+            else
+            {
+                xprintf("addr[0x%08x] buf:mem = 0x%08x == 0x%08x\n", 0x80000000 + address + ad, *(uint32_t *)(BUFFER4K + ad), *(uint32_t *)(0x80000000 + address + ad));
             }
         }
 

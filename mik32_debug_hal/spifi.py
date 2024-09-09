@@ -479,7 +479,7 @@ def write_pages_by_sectors(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc, 
         openocd.run(f"set_reg {{t6 {sector}}}")
 
         openocd.resume()
-        wait_halted(openocd)
+        wait_halted(openocd, 60)
         # openocd.halt()
         print(f"Check page result {openocd.read_memory(0x2003000, 32, 1)}")
 
