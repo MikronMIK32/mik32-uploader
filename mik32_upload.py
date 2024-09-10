@@ -35,10 +35,13 @@ else:
 
 default_openocd_host = '127.0.0.1'
 openocd_exec_path = os.path.join("openocd", "bin", openocd_exec)
-openocd_scripts_path = os.path.join("openocd", "share", "openocd", "scripts")
-openocd_interface_path = os.path.join("interface", "ftdi", "m-link.cfg")
+openocd_scripts_path = os.path.join("openocd-scripts")
+openocd_interface_path = os.path.join("interface", "ftdi", "mikron-link.cfg")
 openocd_target_path = os.path.join("target", "mik32.cfg")
-default_log_path = "nul"
+if os.name == 'nt':
+    default_log_path = "nul"
+else:
+    default_log_path = "/dev/null"
 default_post_action = "reset run"
 
 adapter_default_speed = 500
@@ -83,7 +86,7 @@ class BootMode(Enum):
         return MemoryType.UNKNOWN
 
 
-mik32v0_sections: List[MemorySection] = [
+mik32_sections: List[MemorySection] = [
     MemorySection(MemoryType.BOOT, 0x0, 16 * 1024),
     MemorySection(MemoryType.EEPROM, 0x01000000, 8 * 1024),
     MemorySection(MemoryType.RAM, 0x02000000, 16 * 1024),
@@ -217,7 +220,7 @@ def upload_file(
         print(f"ERROR: File {filename} does not exist")
         exit(1)
 
-    file = FirmwareFile(filename, mik32v0_sections)
+    file = FirmwareFile(filename, mik32_sections)
 
     segments: List[Segment] = file.get_segments()
     pages: Pages = form_pages(segments, boot_mode)
@@ -298,8 +301,9 @@ def upload_file(
 def createParser():
     parser = argparse.ArgumentParser(
         prog='mik32_upload.py',
+        usage='python mik32_upload.py firmware_name.hex',
         description='''Скрипт предназначен для записи программы в ОЗУ, EEPROM и внешнюю flash память, 
-        подключенную по интерфейсу SPIFI'''
+        подключенную по интерфейсу SPIFI. Поддерживаемые форматы прошивок: *.hex, *.bin'''
     )
     parser.add_argument(
         'filepath',
@@ -372,7 +376,6 @@ def createParser():
         help='Открывать OpenOCD в отдельной консоли'
     )
     parser.add_argument(
-        '-b',
         '--boot-mode',
         dest='boot_mode',
         type=BootMode,
@@ -409,7 +412,6 @@ def createParser():
         help='Вывод без последовательностей управления терминалом. Временно не используется'
     )
     parser.add_argument(
-        '-t',
         '--mcu-type',
         dest='mcu_type',
         type=MIK32_Version,
@@ -427,7 +429,6 @@ if __name__ == '__main__':
     parser = createParser()
     namespace = parser.parse_args()
 
-    print("mik32-uploader v0.2.0")
     print(program_name)
 
     if namespace.filepath:
