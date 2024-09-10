@@ -9,6 +9,7 @@ from typing import List, Dict, NamedTuple, Union
 from hex_parser import FirmwareFile, MemorySection, MemoryType, Segment
 from tclrpc import OpenOcdTclRpc, TclException
 from mik32_gpio import MIK32_Version, gpio_init, gpio_deinit
+from _version import applicaton_version
 import mik32_eeprom
 import mik32_spifi
 import mik32_ram
@@ -17,6 +18,7 @@ from parsers import *
 import logging
 import sys
 
+program_name = f'mik32-uploader-{applicaton_version}'
 
 # class bcolors(Enum):
 #     OK = '\033[92m'
@@ -426,6 +428,7 @@ if __name__ == '__main__':
     namespace = parser.parse_args()
 
     print("mik32-uploader v0.2.0")
+    print(program_name)
 
     if namespace.filepath:
         upload_file(
