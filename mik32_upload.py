@@ -28,21 +28,20 @@ program_name = f'mik32-uploader-{applicaton_version}'
 #     BOLD = '\033[1m'
 #     UNDERLINE = '\033[4m'
 
+openocd_exec = "openocd"
 if os.name == 'nt':
     openocd_exec = "openocd.exe"
-else:
-    openocd_exec = "openocd"
 
 default_openocd_host = '127.0.0.1'
 openocd_exec_path = os.path.join("openocd", "bin", openocd_exec)
 openocd_scripts_path = os.path.join("openocd-scripts")
 openocd_interface_path = os.path.join("interface", "ftdi", "mikron-link.cfg")
 openocd_target_path = os.path.join("target", "mik32.cfg")
+default_post_action = "reset run"
+
+default_log_path = "/dev/null"
 if os.name == 'nt':
     default_log_path = "nul"
-else:
-    default_log_path = "/dev/null"
-default_post_action = "reset run"
 
 adapter_default_speed = 500
 

@@ -29,7 +29,7 @@ def upload_file(
         adapter_speed=adapter_default_speed,
         is_open_console=False,
         boot_mode=BootMode.UNDEFINED,
-        log_path=DEFAULT_WORKPATH,
+        log_path=default_log_path,
         post_action=default_post_action,
         mik_version=MIK32_Version.MIK32V2
 ) -> int:
