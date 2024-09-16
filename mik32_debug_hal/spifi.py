@@ -392,15 +392,8 @@ def write_pages(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc, use_quad_sp
     return 0
 
 
-def wait_halted(openocd: OpenOcdTclRpc, timeout_seconds: float = 2) -> int:
-    start_time = time.perf_counter()
-    while ("halted" not in openocd.run("riscv.cpu curstate")):
-        if (time.perf_counter() - start_time) > timeout_seconds:
-            print("Wait halted TIMEOUT!")
-            openocd.halt()
-            return 1
-        time.sleep(0.01)
-    return 0
+def wait_halted(openocd: OpenOcdTclRpc, timeout_seconds: float = 2):
+    openocd.run(f'wait_halt {int(timeout_seconds * 1000)}')
 
 
 def write_pages_by_sectors(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc, use_quad_spi=False, use_chip_erase=False):
@@ -429,36 +422,6 @@ def write_pages_by_sectors(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc, 
     openocd.run("wp 0x2003000 4 w")
     openocd.resume(0x2000000)
     wait_halted(openocd)
-    openocd.halt()
-
-    # spifi erase
-    #
-    # for sector in sectors_list:
-    #     print(f"Erase sector {sector}", flush=True)
-    #     openocd.write_word(0x02002000, 0b0010 | (sector << 8))
-    #     openocd.resume()
-    #     if wait_halted(openocd) != 0:
-    #         return 1
-    #     print(
-    #         f"Erase sector {sector} result {openocd.read_word(0x02002008)}", flush=True)
-
-    # spifi erase check
-    #
-    # for sector in sectors_list:
-    #     # print(f"Erase sector {sector}", flush=True)
-    #     # openocd.write_word(0x02002000, 0b0010 | sector)
-    #     # openocd.resume()
-    #     # if wait_halted(openocd) != 0:
-    #     #     return 1
-    #     # print(f"Erase sector {sector} result {openocd.read_word(0x02002008)}", flush=True)
-
-    #     page_bytes = [0xff] * 256
-
-    #     result = spifi_read_data(openocd, sector, 256, page_bytes)
-
-    #     if result == 1:
-    #         print("Data error")
-    #         return result
 
     for sector in sectors_list:
         print(f"Program sector {sector}", flush=True)
@@ -470,52 +433,16 @@ def write_pages_by_sectors(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc, 
             else:
                 bytes_list.extend([0]*256)
 
-        # extend_value = 1 + sector
-        # bytes_list.extend([(extend_value >> 0) & 0xFF, (extend_value >> 8)
-        #                   & 0xFF, (extend_value >> 16) & 0xFF, (extend_value >> 24) & 0xFF])
-        # print(bytes_list)
-
         openocd.write_memory(0x02002000, 8, bytes_list)
         openocd.run(f"set_reg {{t6 {sector}}}")
 
         openocd.resume()
-        wait_halted(openocd, 60)
-        # openocd.halt()
+        wait_halted(openocd, 10)
         print(f"Check page result {openocd.read_memory(0x2003000, 32, 1)}")
 
         print(f"{datetime.datetime.now().time()} Program sector {sector} complete", flush=True)
 
-
-
-        # result = generic_flash.read_data(openocd, sector, 4096, bytes_list)
-
-        # for page in range(16):
-        #     page_bytes = pages.get(page * 256 + sector)
-        #     if page_bytes is not None:
-        #         result = generic_flash.read_data(
-        #             openocd, page * 256 + sector, 256, page_bytes, dma=dma_instance)
-
-        # if result == 1:
-        #     print("Data error")
-        #     return result
-
-
     init_memory(openocd)
-
-    # check write
-    #
-    # pages_offsets = list(pages)
-    # for index, page_offset in enumerate(pages_offsets):
-    #     page_bytes = pages[page_offset]
-
-    #     memory_bytes = openocd.read_memory(page_offset + 0x80000000, 8, 256)
-    #     print(page_offset, memory_bytes)
-
-    #     for i, byte in enumerate(memory_bytes):
-    #         if byte != page_bytes[i]:
-    #             print("Data error!")
-    #             openocd.run("rbp 0x02002010")
-    #             return result
 
     if result == 0:
         # Прошивка страниц флеш памяти по SPIFI была завершена

@@ -16,7 +16,7 @@ const int BUFFER4K_SIZE = 4 * 1024;
 extern uint8_t *BUFFER4K[];
 extern uint32_t *BUFFER_STATUS[];
 
-register uint32_t address asm("x31");
+register uint32_t address_reg asm("x31");
 
 void SystemClock_Config(void);
 
@@ -46,6 +46,9 @@ int main()
 
     while (1)
     {
+        uint32_t address = address_reg;
+        xprintf("ERASE SECTOR 0x%08x\n", address);
+        // xprintf("*BUFFER_STATUS 0x%08x\n", *BUFFER_STATUS);
         // asm ("wfi");
 
         // *BUFFER_STATUS = 1;
@@ -53,42 +56,26 @@ int main()
         HAL_SPIFI_Reset(&spifi);
         HAL_SPIFI_WaitResetClear(&spifi, HAL_SPIFI_TIMEOUT);
 
-        xprintf("ERASE SECTOR 0x%08x\n", address);
         HAL_SPIFI_W25_SectorErase4K(&spifi, address);
 
-        for (uint32_t ad = 0; ad < BUFFER4K_SIZE; ad += 256)
+        int result = 0;
+
+        for (int ad = 0; ad < BUFFER4K_SIZE; ad += 256)
         {
             // xprintf("Write Page 0x%08x from 0x%08x\n", ad + address, (uint8_t *)((uint32_t)BUFFER4K + ad));
-            HAL_SPIFI_W25_PageProgram(&spifi, ad + address, 256, (uint8_t *)((uint32_t)BUFFER4K + ad));
-        }
+            HAL_SPIFI_W25_PageProgram(&spifi, address + ad, 256, (uint8_t *)((uint32_t)BUFFER4K + ad));
 
-        SPIFI_MemoryCommandTypeDef cmd_mem = {
-            .OpCode = 0x03,
-            .FieldForm = SPIFI_CONFIG_CMD_FIELDFORM_ALL_SERIAL,
-            .FrameForm = SPIFI_CONFIG_CMD_FRAMEFORM_OPCODE_3ADDR,
-            .InterimData = 0,
-            .InterimLength = 0,
-        };
+            uint8_t rb[256] = { 0 };
+            HAL_SPIFI_W25_ReadData(&spifi, address + ad, 256, rb);
 
-        SPIFI_MemoryModeConfig_HandleTypeDef spifi_mem = {
-            .Instance = spifi.Instance,
-            .Command = cmd_mem,
-        };
-
-        HAL_SPIFI_MemoryMode_Init(&spifi_mem);
-
-        int result = 0;
-        for (uint32_t ad = 0; ad < BUFFER4K_SIZE; ad += 4)
-        {
-            if (*(uint32_t *)(BUFFER4K + ad) != *(uint32_t *)(0x80000000 + address + ad))
+            for (uint32_t b = 0; b < 256; b++)
             {
-                xprintf("addr[0x%08x] buf:mem = 0x%08x != 0x%08x\n", 0x80000000 + address + ad, *(uint32_t *)(BUFFER4K + ad), *(uint32_t *)(0x80000000 + address + ad));
-                result = 3;
-                // break;
-            }
-            else
-            {
-                xprintf("addr[0x%08x] buf:mem = 0x%08x == 0x%08x\n", 0x80000000 + address + ad, *(uint32_t *)(BUFFER4K + ad), *(uint32_t *)(0x80000000 + address + ad));
+                if (*(uint8_t *)((uint32_t)BUFFER4K + ad + b) != rb[b])
+                {
+                    xprintf("addr[0x%08x:0x%02x] buf:mem = 0x%02x != 0x%02x\n", (uint32_t)BUFFER4K + ad + b, b, *(uint8_t *)((uint32_t)BUFFER4K + ad + b), rb[b]);
+                    result = 3;
+                    // break;
+                }
             }
         }
 

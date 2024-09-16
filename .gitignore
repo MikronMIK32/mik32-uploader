@@ -4,6 +4,7 @@ openocd
 *.code-workspace
 dist
 mik32_upload.spec
+/build
 /upload_drivers/jtag_spifi/.pio/build/mik32v2/hal_core
 /upload_drivers/jtag_spifi/.pio/build/mik32v2/hal_peripherals
 /upload_drivers/jtag_spifi/.pio/build/mik32v2/hal_utilities
