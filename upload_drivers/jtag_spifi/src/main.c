@@ -42,7 +42,9 @@ int main()
 
     xprintf("BUFFER4K = 0x%08x\n", BUFFER4K);
 
-    *BUFFER_STATUS = 0;
+    *BUFFER_STATUS = 1;
+
+    HAL_DelayMs(1);
 
     while (1)
     {
@@ -73,13 +75,14 @@ int main()
                 if (*(uint8_t *)((uint32_t)BUFFER4K + ad + b) != rb[b])
                 {
                     xprintf("addr[0x%08x:0x%02x] buf:mem = 0x%02x != 0x%02x\n", (uint32_t)BUFFER4K + ad + b, b, *(uint8_t *)((uint32_t)BUFFER4K + ad + b), rb[b]);
-                    result = 3;
+                    result = 2;
                     // break;
                 }
             }
         }
 
         *BUFFER_STATUS = result;
+        HAL_DelayMs(1);
         // asm ("wfi");
     }
 

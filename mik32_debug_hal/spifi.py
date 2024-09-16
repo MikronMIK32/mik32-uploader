@@ -414,12 +414,13 @@ def write_pages_by_sectors(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc, 
     openocd.halt()
     pathname = os.path.dirname(sys.argv[0])
 
+    openocd.run("wp 0x2003000 4 w")
+
     # openocd.run("load_image {%s}" % pathlib.Path(os.path.join(pathname, "firmware.hex")))
     openocd.run("load_image {%s}" % pathlib.Path(
         "C:\\Users\\user\\.platformio\\packages\\tool-mik32-uploader\\upload_drivers\\jtag_spifi\\.pio\\build\\mik32v2\\firmware.hex"
         ))
     
-    openocd.run("wp 0x2003000 4 w")
     openocd.resume(0x2000000)
     wait_halted(openocd)
 
