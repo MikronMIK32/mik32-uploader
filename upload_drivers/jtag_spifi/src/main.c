@@ -40,10 +40,10 @@ int main()
     HAL_SPIFI_Reset(&spifi);
     xprintf("spifi reset complete\n");
 
-    xprintf("BUFFER4K = 0x%08x\n", BUFFER4K);
+    // xprintf("BUFFER4K = 0x%08x\n", BUFFER4K);
 
     *BUFFER_STATUS = 1;
-
+    
     HAL_DelayMs(1);
 
     while (1)
@@ -55,8 +55,8 @@ int main()
 
         // *BUFFER_STATUS = 1;
 
-        HAL_SPIFI_Reset(&spifi);
-        HAL_SPIFI_WaitResetClear(&spifi, HAL_SPIFI_TIMEOUT);
+        // HAL_SPIFI_Reset(&spifi);
+        // HAL_SPIFI_WaitResetClear(&spifi, HAL_SPIFI_TIMEOUT);
 
         HAL_SPIFI_W25_SectorErase4K(&spifi, address);
 
