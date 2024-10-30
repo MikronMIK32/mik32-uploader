@@ -185,6 +185,7 @@ def form_pages(segments: List[Segment], boot_mode=BootMode.UNDEFINED) -> Pages:
 
 adapter_speed_not_supported = [
     "altera-usb-blaster",
+    "start-link",
 ]
 
 
