@@ -32,22 +32,20 @@ int main()
     // *BUFFER_STATUS = 1;
     SystemClock_Config();
 
+#ifdef UART_DEBUG
     UART_Init(UART_0, 278, UART_CONTROL1_TE_M | UART_CONTROL1_M_8BIT_M, 0, 0);
     xprintf("START DRIVER\n");
+#endif
 
     HAL_EEPROM_HandleTypeDef heeprom = {
         .Instance = EEPROM_REGS,
 
     };
 
-    xprintf("BUFFER = 0x%08x\n", BUFFER);
-    // xprintf("BUFFER_STATUS = 0x%08x\n", BUFFER_STATUS);
-
     // *BUFFER_STATUS = 1;
 
     HAL_DelayMs(1);
-    
-    // xprintf("*BUFFER_STATUS 0x%08x\n", *BUFFER_STATUS);
+
     // asm ("wfi");
 
     // *BUFFER_STATUS = 1;
@@ -57,7 +55,9 @@ int main()
     int result = 0;
     for (int ad = 0; ad < max_address_reg; ad += (EEPROM_PAGE_WORDS * 4))
     {
+#ifdef UART_DEBUG
         xprintf("Write Page 0x%04x from 0x%08x\n", ad, (uint8_t *)((uint32_t)BUFFER + ad));
+#endif
 
         HAL_EEPROM_Write(
             &heeprom,
@@ -76,15 +76,17 @@ int main()
             uint8_t ebuf = *(uint8_t *)((uint32_t)BUFFER + ad + b);
             if (ebuf != rb[b])
             {
+#ifdef UART_DEBUG
                 xprintf("addr[0x%04x:0x%08x] buf:mem = 0x%02x != 0x%02x\n", (uint32_t)BUFFER + ad + b, 0x01000000 + ad + b, ebuf, rb[b]);
+#endif
                 result = 2;
                 break;
             }
         }
     }
 
-    *BUFFER_STATUS = result;
     HAL_DelayMs(1);
+    *BUFFER_STATUS = result;
     // asm ("wfi");
 
     while (1)
