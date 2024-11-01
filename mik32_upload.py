@@ -254,7 +254,9 @@ def upload_file(
             if (pages.pages_eeprom.__len__() > 0):
                 start_time = time.perf_counter()
 
-                result |= eeprom.write_pages(
+                # result |= eeprom.write_pages(
+                #     pages.pages_eeprom, openocd)
+                result |= eeprom.write_memory(
                     pages.pages_eeprom, openocd)
 
                 write_time = time.perf_counter() - start_time
@@ -268,6 +270,8 @@ def upload_file(
                 gpio_init(openocd, mik_version)
                 start_time = time.perf_counter()
 
+                # result |= spifi.write_pages(
+                #     pages.pages_spifi, openocd, use_quad_spi=use_quad_spi)
                 result |= spifi.write_pages_by_sectors(
                     pages.pages_spifi, openocd, use_quad_spi=use_quad_spi)
 

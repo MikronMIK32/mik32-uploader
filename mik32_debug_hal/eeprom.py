@@ -1,4 +1,8 @@
+import datetime
 from enum import Enum
+import os
+import pathlib
+import sys
 from typing import Dict, List
 import time
 from tclrpc import OpenOcdTclRpc
@@ -256,4 +260,56 @@ def write_pages(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc) -> int:
             return 1
 
     print("EEPROM page recording completed", flush=True)
+    return 0
+
+
+def wait_halted(openocd: OpenOcdTclRpc, timeout_seconds: float = 2):
+    openocd.run(f'wait_halt {int(timeout_seconds * 1000)}')
+
+
+def collapse_pages(pages: Dict[int, List[int]]) -> List[int]:
+    bytes_list: List[int] = []
+    for page in range(64):
+        page = pages.get(page * 128)
+        if page is not None:
+            bytes_list.extend(page)
+        else:
+            bytes_list.extend([0]*128)
+
+    return bytes_list
+
+
+def write_memory(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc) -> int:
+    result = 0
+
+    openocd.halt()
+    openocd.write_memory(0x02003800, 32, [1])
+    print("EEPROM Init...")
+
+    pathname = os.path.dirname(sys.argv[0])
+    openocd.run("wp 0x2003800 4 w")
+    print("Loading Driver...", flush=True)
+    # openocd.run("load_image {%s}" % pathlib.Path(os.path.join(pathname, "firmware.hex")))
+    openocd.run("load_image {%s}" % pathlib.Path(
+        "C:\\Users\\user\\.platformio\\packages\\tool-mik32-uploader\\upload_drivers\\jtag_eeprom\\.pio\\build\\mik32v2\\firmware.hex"
+        ))
+    
+    # openocd.resume(0x2000000)
+    # wait_halted(openocd)
+    # print(f"Check page result {openocd.read_memory(0x2003800, 32, 1)}")
+    
+    bytes_list = collapse_pages(pages)
+
+    print("Uploading data...", flush=True)
+    openocd.write_memory(0x02001800, 8, bytes_list)
+    print("Uploading data complete!", flush=True)
+
+    print("Run driver...", flush=True)
+    openocd.resume(0x2000000)
+    wait_halted(openocd, 10)
+    print(f"Check page result {openocd.read_memory(0x2003800, 32, 1)}")
+
+    if result == 0:
+        # Прошивка страниц флеш памяти по SPIFI была завершена
+        print(f"{datetime.datetime.now().time()} EEPROM recording has been completed", flush=True)
     return 0
