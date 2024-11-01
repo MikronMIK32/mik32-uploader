@@ -4,51 +4,8 @@ import time
 from tclrpc import OpenOcdTclRpc
 from utils import bytes2words
 
-
-# --------------------------
-# EEPROM register offset
-# --------------------------
-EEPROM_REGS_BASE_ADDRESS = 0x00070400
-
-EEPROM_REGS_EEDAT = EEPROM_REGS_BASE_ADDRESS + 0x00
-EEPROM_REGS_EEA = EEPROM_REGS_BASE_ADDRESS + 0x04
-EEPROM_REGS_EECON = EEPROM_REGS_BASE_ADDRESS + 0x08
-EEPROM_REGS_EESTA = EEPROM_REGS_BASE_ADDRESS + 0x0C
-EEPROM_REGS_EERB = EEPROM_REGS_BASE_ADDRESS + 0x10
-EEPROM_REGS_EEADJ = EEPROM_REGS_BASE_ADDRESS + 0x14
-EEPROM_REGS_NCYCRL = EEPROM_REGS_BASE_ADDRESS + 0x18
-EEPROM_REGS_NCYCEP1 = EEPROM_REGS_BASE_ADDRESS + 0x1C
-EEPROM_REGS_NCYCEP2 = EEPROM_REGS_BASE_ADDRESS + 0x20
-
-# --------------------------
-# EEPROM register fields
-# --------------------------
-# EECON
-EEPROM_EX_S = 0
-EEPROM_OP_S = 1
-EEPROM_WRBEH_S = 3
-EEPROM_APBNWS_S = 5
-EEPROM_DISECC_S = 6
-EEPROM_BWE_S = 7
-EEPROM_IESERR_S = 8
-# EESTA
-EEPROM_BSY_S = 0
-EEPROM_SERR_S = 1
-# NCYCRL
-EEPROM_N_LD_S = 0
-EEPROM_N_R_1_S = 8
-EEPROM_N_R_2_S = 16
-# --------------------------
-# EEPROM codes
-# --------------------------
-EEPROM_OP_RD = 0
-EEPROM_OP_ER = 1
-EEPROM_OP_PR = 2
-EEPROM_BEH_EVEN = 1
-EEPROM_BEH_ODD = 2
-EEPROM_BEH_GLOB = 3
-
-EEPROM_PAGE_MASK = 0x1F80
+import mik32_debug_hal.registers.memory_map as mem_map
+import mik32_debug_hal.registers.bitfields.eeprom as eeprom_fields
 
 
 def eeprom_sysinit(openocd: OpenOcdTclRpc):
@@ -56,39 +13,39 @@ def eeprom_sysinit(openocd: OpenOcdTclRpc):
 
 
 class EEPROM_Operation(Enum):
-    READ = EEPROM_OP_RD
-    ERASE = EEPROM_OP_ER
-    PROGRAM = EEPROM_OP_PR
+    READ = eeprom_fields.OP_RD
+    ERASE = eeprom_fields.OP_ER
+    PROGRAM = eeprom_fields.OP_PR
 
 
 class EEPROM_AffectedPages(Enum):
     SINGLE = 0
-    EVEN = EEPROM_BEH_EVEN
-    ODD = EEPROM_BEH_ODD
-    GLOBAL = EEPROM_BEH_GLOB
+    EVEN = eeprom_fields.BEH_EVEN
+    ODD = eeprom_fields.BEH_ODD
+    GLOBAL = eeprom_fields.BEH_GLOB
 
 
 def eeprom_execute_operation(openocd: OpenOcdTclRpc, op: EEPROM_Operation, affected_pages: EEPROM_AffectedPages, offset: int, buffer: List[int]):
     # buffer write enable and select affected pages
-    openocd.write_memory(EEPROM_REGS_EEA, 32, [offset, (1 << EEPROM_BWE_S)
-                       | (affected_pages.value << EEPROM_WRBEH_S)])
+    openocd.write_memory(mem_map.EEPROM_REGS_EEA, 32, [offset, (1 << eeprom_fields.EECON_BWE_S)
+                       | (affected_pages.value << eeprom_fields.EECON_WRBEH_S)])
 
     if buffer.__len__() > 32:
         return
     for word in buffer:
-        openocd.write_word(EEPROM_REGS_EEDAT, word)
+        openocd.write_word(mem_map.EEPROM_REGS_EEDAT, word)
     # start operation
-    openocd.write_word(EEPROM_REGS_EECON, (
-        (1 << EEPROM_EX_S) | (1 << EEPROM_BWE_S) |
-        (op.value << EEPROM_OP_S) | (affected_pages.value << EEPROM_WRBEH_S)
+    openocd.write_word(mem_map.EEPROM_REGS_EECON, (
+        (1 << eeprom_fields.EECON_EX_S) | (1 << eeprom_fields.EECON_BWE_S) |
+        (op.value << eeprom_fields.EECON_OP_S) | (affected_pages.value << eeprom_fields.EECON_WRBEH_S)
     ))
 
 
 def eeprom_configure_cycles(openocd: OpenOcdTclRpc, LD=1, R_1=2, R_2=1, CYCEP1=66667, CYCEP2=500):
-    openocd.write_word(EEPROM_REGS_NCYCRL, LD << EEPROM_N_LD_S |
-                       R_1 << EEPROM_N_R_1_S | R_2 << EEPROM_N_R_2_S)
-    openocd.write_word(EEPROM_REGS_NCYCEP1, CYCEP1)
-    openocd.write_word(EEPROM_REGS_NCYCEP2, CYCEP2)
+    openocd.write_word(mem_map.EEPROM_REGS_NCYCRL, LD << eeprom_fields.NCYCRL_N_LD_S |
+                       R_1 << eeprom_fields.NCYCRL_N_R_1_S | R_2 << eeprom_fields.NCYCRL_N_R_2_S)
+    openocd.write_word(mem_map.EEPROM_REGS_NCYCEP1, CYCEP1)
+    openocd.write_word(mem_map.EEPROM_REGS_NCYCEP2, CYCEP2)
 
 
 def eeprom_global_erase(openocd: OpenOcdTclRpc):
@@ -102,11 +59,11 @@ def eeprom_global_erase_check(openocd: OpenOcdTclRpc):
     print("EEPROM global erase check through APB...", flush=True)
     print("  Read Data at ...", flush=True)
     ex_value = 0x00000000
-    openocd.write_word(EEPROM_REGS_EEA, 0x00000000)
+    openocd.write_word(mem_map.EEPROM_REGS_EEA, 0x00000000)
     for i in range(0, 64):
         print(f"    Row={i+1}/64")
         for j in range(0, 32):
-            value = openocd.read_memory(EEPROM_REGS_EEDAT, 32, 1)[0]
+            value = openocd.read_memory(mem_map.EEPROM_REGS_EEDAT, 32, 1)[0]
             if ex_value != value:
                 print(
                     f"Unexpect value at Row {i}, Word {j}, expect {ex_value:#0x}, {value:#0x}", flush=True)
@@ -128,13 +85,13 @@ def eeprom_check_data_apb(openocd: OpenOcdTclRpc, words: List[int], offset: int,
     if print_progress:
         print("EEPROM check through APB...", flush=True)
     # address load
-    openocd.write_word(EEPROM_REGS_EEA, offset)
+    openocd.write_word(mem_map.EEPROM_REGS_EEA, offset)
     word_num = 0
     progress = 0
     if print_progress:
         print("[", end="", flush=True)
     for word in words:
-        value: int = openocd.read_word(EEPROM_REGS_EEDAT)
+        value: int = openocd.read_word(mem_map.EEPROM_REGS_EEDAT)
         if words[word_num] != value:
             print(
                 f"Unexpect value at {word_num} word, expect {word:#0x}, get {value:#0x}", flush=True)
