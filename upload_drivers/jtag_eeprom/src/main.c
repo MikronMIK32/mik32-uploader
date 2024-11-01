@@ -20,6 +20,8 @@ extern uint32_t *BUFFER_STATUS[];
 #define EEPROM_PAGE_WORDS 32
 #define EEPROM_PAGE_COUNT 64
 
+register uint32_t max_address_reg asm("x31");
+
 void SystemClock_Config(void);
 void EEPROM_Init(void);
 
@@ -53,7 +55,7 @@ int main()
     HAL_EEPROM_Erase(&heeprom, 0, EEPROM_PAGE_WORDS, HAL_EEPROM_WRITE_ALL, EEPROM_OP_TIMEOUT);
 
     int result = 0;
-    for (int ad = 0; ad < BUFFER_SIZE; ad += (EEPROM_PAGE_WORDS * 4))
+    for (int ad = 0; ad < max_address_reg; ad += (EEPROM_PAGE_WORDS * 4))
     {
         xprintf("Write Page 0x%04x from 0x%08x\n", ad, (uint8_t *)((uint32_t)BUFFER + ad));
 

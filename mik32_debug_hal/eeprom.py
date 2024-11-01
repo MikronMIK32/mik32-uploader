@@ -3,7 +3,7 @@ from enum import Enum
 import os
 import pathlib
 import sys
-from typing import Dict, List
+from typing import Dict, List, Tuple
 import time
 from tclrpc import OpenOcdTclRpc
 from utils import bytes2words
@@ -269,10 +269,14 @@ def wait_halted(openocd: OpenOcdTclRpc, timeout_seconds: float = 2):
 
 def collapse_pages(pages: Dict[int, List[int]]) -> List[int]:
     bytes_list: List[int] = []
+    found_pages = 0
     for page in range(64):
+        if found_pages == len(pages):
+            break
         page = pages.get(page * 128)
         if page is not None:
             bytes_list.extend(page)
+            found_pages += 1
         else:
             bytes_list.extend([0]*128)
 
@@ -282,8 +286,11 @@ def collapse_pages(pages: Dict[int, List[int]]) -> List[int]:
 def write_memory(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc) -> int:
     result = 0
 
+    bytes_list = collapse_pages(pages)
+    max_address = len(bytes_list) - 1
     openocd.halt()
     openocd.write_memory(0x02003800, 32, [1])
+    openocd.run(f"set_reg {{t6 {max_address}}}")
     print("EEPROM Init...")
 
     pathname = os.path.dirname(sys.argv[0])
@@ -298,7 +305,6 @@ def write_memory(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc) -> int:
     # wait_halted(openocd)
     # print(f"Check page result {openocd.read_memory(0x2003800, 32, 1)}")
     
-    bytes_list = collapse_pages(pages)
 
     print("Uploading data...", flush=True)
     openocd.write_memory(0x02001800, 8, bytes_list)
