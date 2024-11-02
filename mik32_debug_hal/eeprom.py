@@ -32,7 +32,7 @@ class EEPROM_AffectedPages(Enum):
 def eeprom_execute_operation(openocd: OpenOcdTclRpc, op: EEPROM_Operation, affected_pages: EEPROM_AffectedPages, offset: int, buffer: List[int]):
     # buffer write enable and select affected pages
     openocd.write_memory(mem_map.EEPROM_REGS_EEA, 32, [offset, (1 << eeprom_fields.EECON_BWE_S)
-                       | (affected_pages.value << eeprom_fields.EECON_WRBEH_S)])
+                                                       | (affected_pages.value << eeprom_fields.EECON_WRBEH_S)])
 
     if buffer.__len__() > 32:
         return
@@ -41,7 +41,8 @@ def eeprom_execute_operation(openocd: OpenOcdTclRpc, op: EEPROM_Operation, affec
     # start operation
     openocd.write_word(mem_map.EEPROM_REGS_EECON, (
         (1 << eeprom_fields.EECON_EX_S) | (1 << eeprom_fields.EECON_BWE_S) |
-        (op.value << eeprom_fields.EECON_OP_S) | (affected_pages.value << eeprom_fields.EECON_WRBEH_S)
+        (op.value << eeprom_fields.EECON_OP_S) | (
+            affected_pages.value << eeprom_fields.EECON_WRBEH_S)
     ))
 
 
@@ -267,7 +268,10 @@ def wait_halted(openocd: OpenOcdTclRpc, timeout_seconds: float = 2):
     openocd.run(f'wait_halt {int(timeout_seconds * 1000)}')
 
 
-def collapse_pages(pages: Dict[int, List[int]]) -> List[int]:
+def combine_pages(pages: Dict[int, List[int]]) -> List[int]:
+    """
+    Объединить страницы в последовательность байт с заполнением промежутков
+    """
     bytes_list: List[int] = []
     found_pages = 0
     for page in range(64):
@@ -284,22 +288,31 @@ def collapse_pages(pages: Dict[int, List[int]]) -> List[int]:
 
 
 def write_memory(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc) -> int:
-    result = 0
+    """
+    Записать всю память с использованием драйвера.
 
-    bytes_list = collapse_pages(pages)
-    max_address = len(bytes_list) - 1
+    pages: Dict[int, List[int]] -- страница - список байт, ключ - адрес в EEPROM
+    """
+
+    # TODO: добавить проверку на версию mik32 - текущий драйвер поддерживает
+    # только версию mik32v2
+
+    bytes_list = combine_pages(pages)
     openocd.halt()
-    openocd.write_memory(0x02003800, 32, [1])
-    openocd.run(f"set_reg {{t6 {max_address}}}")
+
+    STATUS_CODE_M = 0xFF
+
+    max_address = len(bytes_list) // 128
+    openocd.write_memory(0x02003800, 32, [1 | (max_address << 8)])
 
     pathname = os.path.dirname(sys.argv[0])
-    openocd.run("wp 0x2003800 4 w")
-    
+    openocd.run("wp 0x2003800 4 w")  # готовимся поймать результат записи
+
     print("Uploading driver...", flush=True)
     # openocd.run("load_image {%s}" % pathlib.Path(os.path.join(pathname, "firmware.hex")))
     openocd.run("load_image {%s}" % pathlib.Path(
         "C:\\Users\\user\\.platformio\\packages\\tool-mik32-uploader\\upload_drivers\\jtag_eeprom\\.pio\\build\\mik32v2\\firmware.hex"
-        ))
+    ))
 
     print("Uploading data...", flush=True)
     openocd.write_memory(0x02001800, 8, bytes_list)
@@ -307,11 +320,24 @@ def write_memory(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc) -> int:
     print("Uploading data complete! Run driver...", flush=True)
     openocd.resume(0x2000000)
 
-    wait_halted(openocd, 10)
-    openocd.run("rwp 0x02003800")
-    openocd.run("step")
-    print(f"Check page result {openocd.read_memory(0x2003800, 32, 1)}")
+    wait_halted(openocd, 10)        # ждем, когда watchpoint сработает
+    openocd.run("rwp 0x02003800")   # watchpoint ловит до изменения слова
+    openocd.run("step")             # делаем шаг чтобы слово изменилось
 
-    if result == 0:
-        print(f"{datetime.datetime.now().time()} EEPROM recording has been completed", flush=True)
+    result = openocd.read_memory(0x2003800, 32, 1)[0]
+    
+    if (result & 0xFF) == 0:
+        print(f"EEPROM writing successfully completed!", flush=True)
+    else:
+        miss_page = (result >> 8) & (64 - 1)
+        miss_byte = (result >> 16) & (128 - 1)
+        expected_byte = pages(miss_page*128)[miss_byte]
+        miss_byte = (result >> 24) & 0xFF
+        
+        print(f"EEPROM writing failed!", flush=True)
+        print(f"First mismatched byte in page {miss_page},")
+        print(f"byte {miss_byte}, expected {expected_byte}, read {miss_byte}")
+              
+        return 1
+    
     return 0

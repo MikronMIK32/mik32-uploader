@@ -434,6 +434,7 @@ if __name__ == '__main__':
     namespace = parser.parse_args()
 
     print(program_name)
+    print(os.path.dirname(os.path.realpath(__file__)))
 
     if namespace.filepath:
         upload_file(

@@ -4,6 +4,29 @@
 #include "uart_lib.h"
 #include "xprintf.h"
 
+/*
+     31           8 7  0
+    |--------------|----|
+       code data    code
+*/
+
+#define STATUS_CODE_S 0
+#define STATUS_CODE(X) ((X) << STATUS_CODE_S)
+
+#define STATUS_CODE_OK 0
+#define STATUS_CODE_START 1
+#define STATUS_CODE_MISMATCH 2
+
+#define STATUS_CODE_START_PAGE_COUNT_S 8
+#define STATUS_CODE_START_PAGE_COUNT_M ((64 - 1) << STATUS_CODE_START_PAGE_COUNT_S)
+
+#define STATUS_CODE_MISMATCH_PAGE_S 8
+#define STATUS_CODE_MISMATCH_BYTE_S 16
+#define STATUS_CODE_MISMATCH_VALUE_S 24
+
+#define STATUS_CODE_MISMATCH_PAGE(X) ((X) << STATUS_CODE_MISMATCH_PAGE_S)
+#define STATUS_CODE_MISMATCH_BYTE(X) ((X) << STATUS_CODE_MISMATCH_BYTE_S)
+#define STATUS_CODE_MISMATCH_VALUE(X) ((X) << STATUS_CODE_MISMATCH_VALUE_S)
 
 const int BUFFER_SIZE = 8 * 1024;
 extern uint8_t *BUFFER[];
@@ -13,8 +36,6 @@ extern uint32_t BUFFER_STATUS[];
 #define USART_TIMEOUT 1000
 #define EEPROM_PAGE_WORDS 32
 #define EEPROM_PAGE_COUNT 64
-
-register uint32_t max_address_reg asm("x31");
 
 void SystemClock_Config(void);
 void EEPROM_Init(void);
@@ -34,42 +55,49 @@ int main()
         .Instance = EEPROM_REGS,
     };
 
+    int result = STATUS_CODE(STATUS_CODE_OK);
+    int max_address = ((*BUFFER_STATUS & STATUS_CODE_START_PAGE_COUNT_M) >>
+                       STATUS_CODE_START_PAGE_COUNT_S) *
+                      EEPROM_PAGE_WORDS * 4;
+
     HAL_EEPROM_Erase(&heeprom, 0, EEPROM_PAGE_WORDS, HAL_EEPROM_WRITE_ALL, EEPROM_OP_TIMEOUT);
 
-    int result = 0;
-    for (int ad = 0; ad < max_address_reg; ad += (EEPROM_PAGE_WORDS * 4))
+    for (int addr = 0; addr < max_address; addr += (EEPROM_PAGE_WORDS * 4))
     {
 #ifdef UART_DEBUG
-        xprintf("Write Page 0x%04x from 0x%08x\n", ad, (uint8_t *)((uint32_t)BUFFER + ad));
+        xprintf("Write Page 0x%04x from 0x%08x\n", addr, (uint8_t *)((uint32_t)BUFFER + addr));
 #endif
 
         HAL_EEPROM_Write(
             &heeprom,
-            ad,
-            (uint32_t *)((uint32_t)BUFFER + ad),
+            addr,
+            (uint32_t *)((uint32_t)BUFFER + addr),
             EEPROM_PAGE_WORDS,
             HAL_EEPROM_WRITE_SINGLE,
             EEPROM_OP_TIMEOUT);
 
         uint8_t rb[EEPROM_PAGE_WORDS * 4] = {0};
 
-        HAL_EEPROM_Read(&heeprom, ad, (uint32_t *)rb, EEPROM_PAGE_WORDS, EEPROM_OP_TIMEOUT);
+        HAL_EEPROM_Read(&heeprom, addr, (uint32_t *)rb, EEPROM_PAGE_WORDS, EEPROM_OP_TIMEOUT);
 
         for (uint32_t b = 0; b < (EEPROM_PAGE_WORDS * 4); b++)
         {
-            uint8_t ebuf = *(uint8_t *)((uint32_t)BUFFER + ad + b);
+            uint8_t ebuf = *(uint8_t *)((uint32_t)BUFFER + addr + b);
             if (ebuf != rb[b])
             {
 #ifdef UART_DEBUG
-                xprintf("addr[0x%04x:0x%08x] buf:mem = 0x%02x != 0x%02x\n", (uint32_t)BUFFER + ad + b, 0x01000000 + ad + b, ebuf, rb[b]);
+                xprintf("addr[0x%04x:0x%08x] buf:mem = 0x%02x != 0x%02x\n", (uint32_t)BUFFER + addr + b, 0x01000000 + addr + b, ebuf, rb[b]);
 #endif
-                result = 2;
-                goto error_exit;
+                result = STATUS_CODE(STATUS_CODE_MISMATCH) |
+                         STATUS_CODE_MISMATCH_PAGE(addr >> 7) |
+                         STATUS_CODE_MISMATCH_BYTE(b) |
+                         STATUS_CODE_MISMATCH_VALUE(rb[b]);
+                goto debugger_return;
             }
         }
     }
 
-    error_exit:
+debugger_return:
 
     *BUFFER_STATUS = result;
     // asm ("wfi");
