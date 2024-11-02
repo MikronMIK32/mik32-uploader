@@ -4,16 +4,10 @@
 #include "uart_lib.h"
 #include "xprintf.h"
 
-/**
- * @file main.c
- *
- * @brief Пример демонстрирует чтение и запись значений во внешнюю флеш память Winbond W25 по Standard (Single) SPI
- */
 
-// extern char __HEAP_START[];
 const int BUFFER_SIZE = 8 * 1024;
 extern uint8_t *BUFFER[];
-extern uint32_t *BUFFER_STATUS[];
+extern uint32_t BUFFER_STATUS[];
 
 #define EEPROM_OP_TIMEOUT 100000
 #define USART_TIMEOUT 1000
@@ -29,7 +23,6 @@ HAL_EEPROM_HandleTypeDef heeprom;
 
 int main()
 {
-    // *BUFFER_STATUS = 1;
     SystemClock_Config();
 
 #ifdef UART_DEBUG
@@ -39,16 +32,7 @@ int main()
 
     HAL_EEPROM_HandleTypeDef heeprom = {
         .Instance = EEPROM_REGS,
-
     };
-
-    // *BUFFER_STATUS = 1;
-
-    HAL_DelayMs(1);
-
-    // asm ("wfi");
-
-    // *BUFFER_STATUS = 1;
 
     HAL_EEPROM_Erase(&heeprom, 0, EEPROM_PAGE_WORDS, HAL_EEPROM_WRITE_ALL, EEPROM_OP_TIMEOUT);
 
@@ -80,12 +64,13 @@ int main()
                 xprintf("addr[0x%04x:0x%08x] buf:mem = 0x%02x != 0x%02x\n", (uint32_t)BUFFER + ad + b, 0x01000000 + ad + b, ebuf, rb[b]);
 #endif
                 result = 2;
-                break;
+                goto error_exit;
             }
         }
     }
 
-    HAL_DelayMs(1);
+    error_exit:
+
     *BUFFER_STATUS = result;
     // asm ("wfi");
 
