@@ -207,7 +207,7 @@ def get_segments_list(pages_offsets: List[int], segment_size: int) -> List[int]:
     segments = set()
     for offset in pages_offsets:
         segments.add(offset & ~(segment_size - 1))
-    return list(segments)
+    return sorted(list(segments))
 
 
 def dma_config(openocd: OpenOcdTclRpc) -> dma.DMA:
@@ -301,18 +301,9 @@ def check_pages(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc, use_quad_sp
         print("SPIFI pages checking completed", flush=True)
     return 0
 
-# # PROFILING IMPORTS
-# import cProfile, pstats, io
-# from pstats import SortKey
-
 
 def write_pages(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc, use_quad_spi=False, use_chip_erase=False):
     result = 0
-
-    # # PROFILING INIT
-    # pr = cProfile.Profile()
-    # pr.enable()
-    # # PROFILING INIT END
 
     openocd.halt()
     init(openocd)
@@ -335,13 +326,6 @@ def write_pages(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc, use_quad_sp
     else:
         generic_flash.erase(openocd, generic_flash.EraseType.SECTOR_ERASE,
                             get_segments_list(list(pages), 4*1024))
-
-        # for addr in range(0, 4096*2, 256):
-        #     result = spifi_read_data(openocd, addr, 256, [0xFF]*256, dma=dma)
-
-        #     if result == 1:
-        #         print("Data error")
-        #         return result
 
     print("Quad Enable", generic_flash.check_quad_enable(openocd))
 
@@ -373,18 +357,6 @@ def write_pages(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc, use_quad_sp
         if result == 1:
             print("Data error")
             return result
-
-    # if (use_quad_spi):
-    #    spifi_quad_disable(openocd)
-
-    # # PROFILING GET STATS
-    # pr.disable()
-    # s = io.StringIO()
-    # sortby = SortKey.CUMULATIVE
-    # ps = pstats.Stats(pr, stream=s).sort_stats(sortby)
-    # ps.print_stats()
-    # print(s.getvalue())
-    # # PROFILING GET STATS END
 
     if result == 0:
         # Прошивка страниц флеш памяти по SPIFI была завершена
@@ -421,14 +393,17 @@ def write_pages_by_sectors(pages: Dict[int, List[int]],
 
     openocd.run("wp 0x2003000 4 w")
 
-    # openocd.run("load_image {%s}" % pathlib.Path(os.path.join(pathname, "firmware.hex")))
+    print("Uploading driver...", flush=True)
     openocd.run("load_image {%s}" % pathlib.Path(driver_path))
 
     openocd.resume(0x2000000)
     wait_halted(openocd)
 
-    for sector in sectors_list:
-        print(f"Program sector {sector}", flush=True)
+    for i, sector in enumerate(sectors_list):
+        # print(f"Program sector {sector}", flush=True)
+        ByteAddress = sector
+        progress = f"{(i*100)//len(sectors_list)}%"
+        print(f"Writing Flash sector {ByteAddress:#010x}... {progress:>4}", end="", flush=True)
         bytes_list: List[int] = []
         for page in range(16):
             page = pages.get(page * 256 + sector)
@@ -439,17 +414,30 @@ def write_pages_by_sectors(pages: Dict[int, List[int]],
 
         openocd.write_memory(0x02002000, 8, bytes_list)
         openocd.run(f"set_reg {{t6 {sector}}}")
-
         openocd.resume()
-        wait_halted(openocd, 10)
-        print(f"Check page result {openocd.read_memory(0x2003000, 32, 1)}")
+        wait_halted(openocd, 10)    # ждем, когда watchpoint сработает
+                                    # watchpoint ловит до изменения слова
+        openocd.run("step")         # делаем шаг, чтобы прочитать новое слово
 
-        print(
-            f"{datetime.datetime.now().time()} Program sector {sector} complete", flush=True)
+        result = openocd.read_memory(0x2003000, 32, 1)[0]
+        
+        if result == 0:
+            print(" OK!", flush=True)
+        else:
+            print(" FAIL!", flush=True)
+            print("result =", result)
+            break
+    if result == 0:
+        print(f"Writing Flash sector {sectors_list[-1]:#010x}... 100% OK!", flush=True)
 
+    openocd.run("rwp 0x02003800")
     init_memory(openocd)
 
     if result == 0:
         # Прошивка страниц флеш памяти по SPIFI была завершена
-        print("Flashing of flash memory pages via SPIFI has been completed", flush=True)
-    return 0
+        print("SPIFI writing successfully completed", flush=True)
+    else:
+        print(f"SPIFI writing failed!", flush=True)
+        return 1
+    
+    return result
