@@ -57,7 +57,7 @@ optional arguments:
                         Путь к файлу конфигурации целевого контроллера относительно папки scripts. По умолчанию:
                         target\mik32.cfg
   --open-console        Открывать OpenOCD в отдельной консоли
-  -b {undefined,eeprom,ram,spifi}, --boot-mode {undefined,eeprom,ram,spifi}
+  --boot-mode {undefined,eeprom,ram,spifi}
                         Выбор типа памяти, который отображается на загрузочную область. Если тип не выбран, данные,
                         находящиеся в загрузочной области в hex файле отбрасываются. По умолчанию: undefined
   --log-path LOG_PATH   Путь к файлу журнала. По умолчанию: nul
@@ -65,6 +65,7 @@ optional arguments:
                         Команды OpenOCD, запускаемые после прошивки. По умолчанию: reset run
   -t {MIK32V0,MIK32V2}, --mcu-type {MIK32V0,MIK32V2}
                         Выбор микроконтроллера. По умолчанию: MIK32V2
+  --no-driver           Отключает прошивку с использованием драйвера в ОЗУ
 ```
 
 ## Принцип работы

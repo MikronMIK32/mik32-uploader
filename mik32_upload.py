@@ -211,7 +211,8 @@ def upload_file(
         boot_mode=BootMode.UNDEFINED,
         log_path=default_log_path,
         post_action=default_post_action,
-        mik_version=MIK32_Version.MIK32V2
+        mik_version=MIK32_Version.MIK32V2,
+        use_driver=True,
 ) -> int:
     """
     Write ihex or binary file into MIK32 EEPROM or external flash memory
@@ -261,16 +262,22 @@ def upload_file(
             if (pages.pages_eeprom.__len__() > 0):
                 start_time = time.perf_counter()
 
-                result |= eeprom.write_memory(
-                    pages.pages_eeprom,
-                    openocd,
-                    os.path.join(
-                        default_drivers_path,
-                        'jtag-eeprom',
-                        default_drivers_build_path,
-                        'firmware.hex'
+                if use_driver:
+                    result |= eeprom.write_memory(
+                        pages.pages_eeprom,
+                        openocd,
+                        os.path.join(
+                            default_drivers_path,
+                            'jtag-eeprom',
+                            default_drivers_build_path,
+                            'firmware.hex'
+                        )
                     )
-                )
+                else:
+                    result |= eeprom.write_pages(
+                        pages.pages_eeprom,
+                        openocd
+                    )
 
                 write_time = time.perf_counter() - start_time
                 write_size = pages.pages_eeprom.__len__(
@@ -284,17 +291,23 @@ def upload_file(
                 gpio_init(openocd, mik_version)
                 start_time = time.perf_counter()
 
-                result |= spifi.write_pages_by_sectors(
-                    pages.pages_spifi,
-                    openocd,
-                    os.path.join(
-                        default_drivers_path,
-                        'jtag-spifi',
-                        default_drivers_build_path,
-                        'firmware.hex'
-                    ),
-                    use_quad_spi=use_quad_spi,
-                )
+                if use_driver:
+                    result |= spifi.write_pages_by_sectors(
+                        pages.pages_spifi,
+                        openocd,
+                        os.path.join(
+                            default_drivers_path,
+                            'jtag-spifi',
+                            default_drivers_build_path,
+                            'firmware.hex'
+                        )
+                    )
+                else:
+                    result |= spifi.write_pages(
+                        pages.pages_spifi,
+                        openocd,
+                        use_quad_spi=use_quad_spi
+                    )
 
                 write_time = time.perf_counter() - start_time
                 write_size = pages.pages_spifi.__len__(
@@ -432,6 +445,13 @@ def createParser():
         help="Выбор микроконтроллера. "
         f"По умолчанию: {MIK32_Version.MIK32V2}"
     )
+    parser.add_argument(
+        '--no-driver',
+        dest='use_driver',
+        action='store_false',
+        default=True,
+        help='Отключает прошивку с использованием драйвера в ОЗУ'
+    )
     return parser
 
 
@@ -460,7 +480,8 @@ if __name__ == '__main__':
                 boot_mode=namespace.boot_mode,
                 log_path=namespace.log_path,
                 post_action=namespace.post_action,
-                mik_version=namespace.mcu_type
+                mik_version=namespace.mcu_type,
+                use_driver=namespace.use_driver,
             )
         )
     else:
