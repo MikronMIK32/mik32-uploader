@@ -22,14 +22,6 @@ from sys import exit
 
 program_name = f'mik32-uploader-{applicaton_version}'
 
-# class bcolors(Enum):
-#     OK = '\033[92m'
-#     WARNING = '\033[93m'
-#     FAIL = '\033[91m'
-#     ENDC = '\033[0m'
-#     BOLD = '\033[1m'
-#     UNDERLINE = '\033[4m'
-
 openocd_exec = "openocd"
 if os.name == 'nt':
     openocd_exec = "openocd.exe"
@@ -291,8 +283,6 @@ def upload_file(
                 gpio_init(openocd, mik_version)
                 start_time = time.perf_counter()
 
-                # result |= spifi.write_pages(
-                #     pages.pages_spifi, openocd, use_quad_spi=use_quad_spi)
                 result |= spifi.write_pages_by_sectors(
                     pages.pages_spifi,
                     openocd,
@@ -425,25 +415,11 @@ def createParser():
         default=default_log_path,
         help=f"Путь к файлу журнала. По умолчанию: {default_log_path}"
     )
-    # parser.add_argument(
-    #     '--log-terminal',
-    #     dest='log_termir',
-    #     action='store_true',
-    #     default=False,
-    #     help='Вывод журнала в консоль'
-    # )
     parser.add_argument(
         '--post-action',
         dest='post_action',
         default=default_post_action,
         help=f"Команды OpenOCD, запускаемые после прошивки. По умолчанию: {default_post_action}"
-    )
-    parser.add_argument(
-        '--no-color',
-        dest='no_color',
-        action='store_true',
-        default=False,
-        help='Вывод без последовательностей управления терминалом. Временно не используется'
     )
     parser.add_argument(
         '--mcu-type',

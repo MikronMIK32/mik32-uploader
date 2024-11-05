@@ -79,6 +79,7 @@ shutil.copytree('./openocd-scripts/',
 os.makedirs(f'./dist/{program_name}/upload-drivers/jtag-eeprom/')
 shutil.copy('./upload-drivers/jtag-eeprom/.pio/build/mik32v2/firmware.hex',
                 f'./dist/{program_name}/upload-drivers/jtag-eeprom/')
+
 os.makedirs(f'./dist/{program_name}/upload-drivers/jtag-spifi/')
 shutil.copy('./upload-drivers/jtag-spifi/.pio/build/mik32v2/firmware.hex',
                 f'./dist/{program_name}/upload-drivers/jtag-spifi/')
