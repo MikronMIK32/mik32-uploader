@@ -17,6 +17,8 @@ from _version import applicaton_version
 from parsers import *
 import logging
 import sys
+from pathlib import Path
+from sys import exit
 
 program_name = f'mik32-uploader-{applicaton_version}'
 
@@ -38,6 +40,19 @@ openocd_scripts_path = os.path.join("openocd-scripts")
 openocd_interface_path = os.path.join("interface", "ftdi", "mikron-link.cfg")
 openocd_target_path = os.path.join("target", "mik32.cfg")
 default_post_action = "reset run"
+
+default_drivers_path = os.path.dirname(os.path.realpath(__file__))
+default_drivers_build_path = ''
+
+if os.path.split(default_drivers_path)[-1] == '_internal':
+    default_drivers_path = os.path.join(
+        os.path.dirname(default_drivers_path),
+        'upload-drivers'
+    )
+else:
+    default_drivers_path = os.path.join(default_drivers_path, 'upload-drivers')
+    default_drivers_build_path = os.path.join('.pio', 'build', 'mik32v2')
+
 
 default_log_path = "/dev/null"
 if os.name == 'nt':
@@ -254,10 +269,16 @@ def upload_file(
             if (pages.pages_eeprom.__len__() > 0):
                 start_time = time.perf_counter()
 
-                # result |= eeprom.write_pages(
-                #     pages.pages_eeprom, openocd)
                 result |= eeprom.write_memory(
-                    pages.pages_eeprom, openocd)
+                    pages.pages_eeprom,
+                    openocd,
+                    os.path.join(
+                        default_drivers_path,
+                        'jtag-eeprom',
+                        default_drivers_build_path,
+                        'firmware.hex'
+                    )
+                )
 
                 write_time = time.perf_counter() - start_time
                 write_size = pages.pages_eeprom.__len__(
@@ -273,7 +294,16 @@ def upload_file(
                 # result |= spifi.write_pages(
                 #     pages.pages_spifi, openocd, use_quad_spi=use_quad_spi)
                 result |= spifi.write_pages_by_sectors(
-                    pages.pages_spifi, openocd, use_quad_spi=use_quad_spi)
+                    pages.pages_spifi,
+                    openocd,
+                    os.path.join(
+                        default_drivers_path,
+                        'jtag-spifi',
+                        default_drivers_build_path,
+                        'firmware.hex'
+                    ),
+                    use_quad_spi=use_quad_spi,
+                )
 
                 write_time = time.perf_counter() - start_time
                 write_size = pages.pages_spifi.__len__(
@@ -434,7 +464,6 @@ if __name__ == '__main__':
     namespace = parser.parse_args()
 
     print(program_name)
-    print(os.path.dirname(os.path.realpath(__file__)))
 
     if namespace.filepath:
         upload_file(

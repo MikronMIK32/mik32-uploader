@@ -287,7 +287,7 @@ def combine_pages(pages: Dict[int, List[int]]) -> List[int]:
     return bytes_list
 
 
-def write_memory(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc) -> int:
+def write_memory(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc, driver_path: str) -> int:
     """
     Записать всю память с использованием драйвера.
 
@@ -309,10 +309,7 @@ def write_memory(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc) -> int:
     openocd.run("wp 0x2003800 4 w")  # готовимся поймать результат записи
 
     print("Uploading driver...", flush=True)
-    # openocd.run("load_image {%s}" % pathlib.Path(os.path.join(pathname, "firmware.hex")))
-    openocd.run("load_image {%s}" % pathlib.Path(
-        "C:\\Users\\user\\.platformio\\packages\\tool-mik32-uploader\\upload_drivers\\jtag_eeprom\\.pio\\build\\mik32v2\\firmware.hex"
-    ))
+    openocd.run("load_image {%s}" % pathlib.Path(driver_path))
 
     print("Uploading data...", flush=True)
     openocd.write_memory(0x02001800, 8, bytes_list)
@@ -322,22 +319,22 @@ def write_memory(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc) -> int:
 
     wait_halted(openocd, 10)        # ждем, когда watchpoint сработает
     openocd.run("rwp 0x02003800")   # watchpoint ловит до изменения слова
-    openocd.run("step")             # делаем шаг чтобы слово изменилось
+    openocd.run("step")             # делаем шаг, чтобы прочитать новое слово
 
     result = openocd.read_memory(0x2003800, 32, 1)[0]
-    
+
     if (result & 0xFF) == 0:
         print(f"EEPROM writing successfully completed!", flush=True)
     else:
         miss_page = (result >> 8) & (64 - 1)
         miss_byte = (result >> 16) & (128 - 1)
-        expected_byte = pages(miss_page*128)[miss_byte]
+        expected_byte = pages[miss_page*128][miss_byte]
         miss_byte = (result >> 24) & 0xFF
-        
+
         print(f"EEPROM writing failed!", flush=True)
         print(f"First mismatched byte in page {miss_page},")
         print(f"byte {miss_byte}, expected {expected_byte}, read {miss_byte}")
-              
+
         return 1
-    
+
     return 0

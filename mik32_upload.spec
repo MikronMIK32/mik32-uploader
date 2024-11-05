@@ -75,6 +75,14 @@ def tar_gz_directory(directory_path, tar_gz_path):
 
 shutil.copytree('./openocd-scripts/',
                 f'./dist/{program_name}/openocd-scripts/')
+
+os.makedirs(f'./dist/{program_name}/upload-drivers/jtag-eeprom/')
+shutil.copy('./upload-drivers/jtag-eeprom/.pio/build/mik32v2/firmware.hex',
+                f'./dist/{program_name}/upload-drivers/jtag-eeprom/')
+os.makedirs(f'./dist/{program_name}/upload-drivers/jtag-spifi/')
+shutil.copy('./upload-drivers/jtag-spifi/.pio/build/mik32v2/firmware.hex',
+                f'./dist/{program_name}/upload-drivers/jtag-spifi/')
+
 if os.name == 'nt':
     zip_directory(f'./dist/{program_name}/',
                   f'./dist/mik32-uploader-{applicaton_version_line}.zip')

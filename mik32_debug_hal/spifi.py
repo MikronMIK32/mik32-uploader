@@ -268,7 +268,7 @@ def check_pages(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc, use_quad_sp
     generic_flash.chip_reset(openocd)
 
     JEDEC_ID = send_command(openocd, generic_flash.JEDEC_ID_COMMAND,
-                                  Frameform.OPCODE_NOADDR, Fieldform.ALL_SERIAL, 3)
+                            Frameform.OPCODE_NOADDR, Fieldform.ALL_SERIAL, 3)
 
     print(f"JEDEC ID = {JEDEC_ID[0]:02x} {JEDEC_ID[1]:02x} {JEDEC_ID[2]:02x}")
 
@@ -324,7 +324,7 @@ def write_pages(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc, use_quad_sp
     generic_flash.chip_reset(openocd)
 
     JEDEC_ID = send_command(openocd, generic_flash.JEDEC_ID_COMMAND,
-                                  Frameform.OPCODE_NOADDR, Fieldform.ALL_SERIAL, 3)
+                            Frameform.OPCODE_NOADDR, Fieldform.ALL_SERIAL, 3)
 
     print(f"JEDEC ID = {JEDEC_ID[0]:02x} {JEDEC_ID[1]:02x} {JEDEC_ID[2]:02x}")
 
@@ -334,7 +334,7 @@ def write_pages(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc, use_quad_sp
         generic_flash.erase(openocd, generic_flash.EraseType.CHIP_ERASE)
     else:
         generic_flash.erase(openocd, generic_flash.EraseType.SECTOR_ERASE,
-                                  get_segments_list(list(pages), 4*1024))
+                            get_segments_list(list(pages), 4*1024))
 
         # for addr in range(0, 4096*2, 256):
         #     result = spifi_read_data(openocd, addr, 256, [0xFF]*256, dma=dma)
@@ -365,7 +365,7 @@ def write_pages(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc, use_quad_sp
                 openocd, page_offset, page_bytes, 256, f"{(index*100)//pages_offsets.__len__()}%", dma=dma_instance)
         else:
             generic_flash.page_program(openocd, page_offset, page_bytes,
-                                             256, f"{(index*100)//pages_offsets.__len__()}%", dma=dma_instance)
+                                       256, f"{(index*100)//pages_offsets.__len__()}%", dma=dma_instance)
 
         result = generic_flash.read_data(
             openocd, page_offset, 256, page_bytes, dma=dma_instance, use_quad_spi=use_quad_spi)
@@ -396,7 +396,12 @@ def wait_halted(openocd: OpenOcdTclRpc, timeout_seconds: float = 2):
     openocd.run(f'wait_halt {int(timeout_seconds * 1000)}')
 
 
-def write_pages_by_sectors(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc, use_quad_spi=False, use_chip_erase=False):
+def write_pages_by_sectors(pages: Dict[int, List[int]],
+                           openocd: OpenOcdTclRpc,
+                           driver_path: str,
+                           use_quad_spi=False,
+                           use_chip_erase=False,
+                           ):
     result = 0
 
     openocd.halt()
@@ -417,10 +422,8 @@ def write_pages_by_sectors(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc, 
     openocd.run("wp 0x2003000 4 w")
 
     # openocd.run("load_image {%s}" % pathlib.Path(os.path.join(pathname, "firmware.hex")))
-    openocd.run("load_image {%s}" % pathlib.Path(
-        "C:\\Users\\user\\.platformio\\packages\\tool-mik32-uploader\\upload_drivers\\jtag_spifi\\.pio\\build\\mik32v2\\firmware.hex"
-        ))
-    
+    openocd.run("load_image {%s}" % pathlib.Path(driver_path))
+
     openocd.resume(0x2000000)
     wait_halted(openocd)
 
@@ -441,7 +444,8 @@ def write_pages_by_sectors(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc, 
         wait_halted(openocd, 10)
         print(f"Check page result {openocd.read_memory(0x2003000, 32, 1)}")
 
-        print(f"{datetime.datetime.now().time()} Program sector {sector} complete", flush=True)
+        print(
+            f"{datetime.datetime.now().time()} Program sector {sector} complete", flush=True)
 
     init_memory(openocd)
 
