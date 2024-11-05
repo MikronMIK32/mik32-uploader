@@ -277,8 +277,9 @@ def upload_file(
                 ) * memory_page_size[MemoryType.EEPROM]
                 t = time.localtime()
                 current_time = time.strftime("%H:%M:%S", t)
-                print(
-                    f"[{current_time}] Wrote {write_size} bytes in {write_time:.2f} seconds (effective {(write_size/(write_time*1024)):.1f} kbyte/s)")
+                if result == 0:
+                    print(
+                        f"[{current_time}] Wrote {write_size} bytes in {write_time:.2f} seconds (effective {(write_size/(write_time*1024)):.1f} kbyte/s)")
             if (pages.pages_spifi.__len__() > 0):
                 gpio_init(openocd, mik_version)
                 start_time = time.perf_counter()
@@ -300,8 +301,9 @@ def upload_file(
                 ) * memory_page_size[MemoryType.SPIFI]
                 t = time.localtime()
                 current_time = time.strftime("%H:%M:%S", t)
-                print(
-                    f"[{current_time}] Wrote {write_size} bytes in {write_time:.2f} seconds (effective {(write_size/(write_time*1024)):.1f} kbyte/s)")
+                if result == 0:
+                    print(
+                        f"[{current_time}] Wrote {write_size} bytes in {write_time:.2f} seconds (effective {(write_size/(write_time*1024)):.1f} kbyte/s)")
                 gpio_deinit(openocd, mik_version)
 
             segments_ram = list(filter(
@@ -442,22 +444,24 @@ if __name__ == '__main__':
     print(program_name)
 
     if namespace.filepath:
-        upload_file(
-            namespace.filepath,
-            host=namespace.openocd_host,
-            port=namespace.openocd_port,
-            is_run_openocd=namespace.run_openocd,
-            use_quad_spi=namespace.use_quad_spi,
-            openocd_exec=namespace.openocd_exec,
-            openocd_scripts=namespace.openocd_scripts,
-            openocd_interface=namespace.openocd_interface,
-            openocd_target=namespace.openocd_target,
-            adapter_speed=namespace.adapter_speed,
-            is_open_console=namespace.open_console,
-            boot_mode=namespace.boot_mode,
-            log_path=namespace.log_path,
-            post_action=namespace.post_action,
-            mik_version=namespace.mcu_type
+        exit(
+            upload_file(
+                namespace.filepath,
+                host=namespace.openocd_host,
+                port=namespace.openocd_port,
+                is_run_openocd=namespace.run_openocd,
+                use_quad_spi=namespace.use_quad_spi,
+                openocd_exec=namespace.openocd_exec,
+                openocd_scripts=namespace.openocd_scripts,
+                openocd_interface=namespace.openocd_interface,
+                openocd_target=namespace.openocd_target,
+                adapter_speed=namespace.adapter_speed,
+                is_open_console=namespace.open_console,
+                boot_mode=namespace.boot_mode,
+                log_path=namespace.log_path,
+                post_action=namespace.post_action,
+                mik_version=namespace.mcu_type
+            )
         )
     else:
         print("Nothing to upload")
