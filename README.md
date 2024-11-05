@@ -16,6 +16,13 @@
 
 Скрипт по умолчанию ищет исполняемый файл openocd по пути openocd\bin\openocd.exe относительно папки со скриптом.
 
+### Установка в PlatformIO
+
+Клонировать ветку репозитория master в директорию `tool-mik32-uploader` в
+`~/.platformio/packages/`, либо скачать Source Code последнего релиза и 
+распаковать содержимое папки `mik32-uploader-{версия}` в директорию 
+`tool-mik32-uploader` в `~/.platformio/packages/`
+
 ## Запуск программы
 
 Минимальная команда для запуска:
