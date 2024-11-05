@@ -308,13 +308,15 @@ def write_memory(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc, driver_pat
     pathname = os.path.dirname(sys.argv[0])
     openocd.run("wp 0x2003800 4 w")  # готовимся поймать результат записи
 
-    print("Uploading driver...", flush=True)
-    openocd.run("load_image {%s}" % pathlib.Path(driver_path))
+    print("Uploading driver... ", end="", flush=True)
+    openocd.run(f"load_image {{{pathlib.Path(driver_path)}}}")
+    print("OK!", flush=True)
 
-    print("Uploading data...", flush=True)
+    print("Uploading data...   ", end="", flush=True)
     openocd.write_memory(0x02001800, 8, bytes_list)
+    print("OK!", flush=True)
 
-    print("Uploading data complete! Run driver...", flush=True)
+    print("Run driver...", flush=True)
     openocd.resume(0x2000000)
 
     wait_halted(openocd, 10)        # ждем, когда watchpoint сработает

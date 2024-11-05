@@ -393,17 +393,19 @@ def write_pages_by_sectors(pages: Dict[int, List[int]],
 
     openocd.run("wp 0x2003000 4 w")
 
-    print("Uploading driver...", flush=True)
-    openocd.run("load_image {%s}" % pathlib.Path(driver_path))
+    print("Uploading driver... ", end="", flush=True)
+    openocd.run(f"load_image {{{pathlib.Path(driver_path)}}}")
+    print("OK!", flush=True)
 
     openocd.resume(0x2000000)
     wait_halted(openocd)
 
+    print("Writing Flash by sectors...", flush=True)
+
     for i, sector in enumerate(sectors_list):
-        # print(f"Program sector {sector}", flush=True)
         ByteAddress = sector
         progress = f"{(i*100)//len(sectors_list)}%"
-        print(f"Writing Flash sector {ByteAddress:#010x}... {progress:>4}", end="", flush=True)
+        print(f"  {ByteAddress:#010x} {progress:>4}", end="", flush=True)
         bytes_list: List[int] = []
         for page in range(16):
             page = pages.get(page * 256 + sector)
@@ -428,14 +430,14 @@ def write_pages_by_sectors(pages: Dict[int, List[int]],
             print("result =", result)
             break
     if result == 0:
-        print(f"Writing Flash sector {sectors_list[-1]:#010x}... 100% OK!", flush=True)
+        print(f"  {sectors_list[-1]:#010x} 100% OK!", flush=True)
 
     openocd.run("rwp 0x02003800")
     init_memory(openocd)
 
     if result == 0:
         # Прошивка страниц флеш памяти по SPIFI была завершена
-        print("SPIFI writing successfully completed", flush=True)
+        print("SPIFI writing successfully completed!", flush=True)
     else:
         print(f"SPIFI writing failed!", flush=True)
         return 1
