@@ -97,8 +97,6 @@ class FirmwareFile:
                     expect_address += 1
             elif record.type == RecordType.EXTADDR:
                 lba = record.address
-            elif record.type == RecordType.LINEARSTARTADDR:
-                print(f"Start Linear Address: {record.address:#10x}", )
             elif record.type == RecordType.EOF:
                 break
 
