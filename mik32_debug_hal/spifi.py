@@ -377,6 +377,8 @@ def write_pages_by_sectors(pages: Dict[int, List[int]],
     result = 0
 
     openocd.halt()
+    openocd.run("riscv.cpu set_reg {mstatus 0 mie 0}") # Отключение прерываний
+    
     init(openocd)
     # openocd.run("rwp")
 

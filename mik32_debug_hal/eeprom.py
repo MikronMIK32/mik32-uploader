@@ -299,6 +299,7 @@ def write_memory(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc, driver_pat
 
     bytes_list = combine_pages(pages)
     openocd.halt()
+    openocd.run("riscv.cpu set_reg {mstatus 0 mie 0}") # Отключение прерываний
 
     STATUS_CODE_M = 0xFF
 
