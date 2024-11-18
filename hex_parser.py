@@ -2,7 +2,7 @@ from enum import Enum
 import os
 from typing import List, NamedTuple, Union
 
-from parsers import Record, RecordType, parse_line
+from parsers import ParserError, Record, RecordType, parse_line
 
 
 class MemoryType(Enum):
