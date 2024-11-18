@@ -11,7 +11,14 @@ class TclException(Exception):
         self.msg = msg
 
     def __repr__(self):
-        return 'TclException(%d, %r)' % (self.code, self.msg)
+        return '\nTclException(%d, %r)' % (self.code, self.msg)
+
+class TclPortError(Exception):
+    def __init__(self, msg):
+        self.msg = msg
+
+    def __repr__(self):
+        return 'TclPortError %r' % (self.msg)
 
 _RE_SIMPLE_TCL_WORD = re.compile(r"^[a-zA-Z_0-9:+./@=,'-]+$")
 def tcl_quote_word(word):
@@ -85,7 +92,7 @@ class OpenOcdTclRpc:
             index = data.find(self.SEPARATOR_BYTES)
             if index >= 0:
                 if index != len(data) - 1:
-                    raise Exception('Unhandled extra bytes after %r'.format(self.SEPARATOR_BYTES))
+                    raise TclPortError('Unhandled extra bytes after %r'.format(self.SEPARATOR_BYTES))
                 return data[:-1]
         
     def wait_for_port(self, timeout: float = 5.0):

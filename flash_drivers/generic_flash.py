@@ -44,6 +44,14 @@ QUAD_PAGE_PROGRAM_COMMAND = 0x32
 JEDEC_ID_COMMAND = 0x9F
 
 
+class FlashError(Exception):
+    def __init__(self, value):
+        self.value = value
+
+    def __str__(self):
+        return ("ERROR: " + repr(self.value))
+
+
 class SREG_Num(Enum):
     SREG1 = 0x00
     SREG2 = 0x30
@@ -146,7 +154,7 @@ def page_program(
 ):
     print(f"Writing Flash page {ByteAddress:#010x}... {progress}", flush=True)
     if byte_count > 256:
-        raise Exception("Byte count more than 256")
+        raise FlashError("Byte count more than 256")
 
     write_enable(openocd)
     spifi.send_command(openocd, PAGE_PROGRAM_COMMAND, spifi.Frameform.OPCODE_3ADDR,
@@ -182,7 +190,7 @@ def quad_page_program(
 ):
     print(f"Writing page {ByteAddress:#010x}... {progress}", flush=True)
     if byte_count > 256:
-        raise Exception("Byte count more than 256")
+        raise FlashError("Byte count more than 256")
 
     write_enable(openocd)
     spifi.send_command(openocd, QUAD_PAGE_PROGRAM_COMMAND, spifi.Frameform.OPCODE_3ADDR,

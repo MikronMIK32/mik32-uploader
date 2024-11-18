@@ -5,6 +5,14 @@ from enum import Enum
 from typing import List
 
 
+class ParserError(Exception):
+    def __init__(self, value):
+        self.value = value
+
+    def __str__(self):
+        return ("ERROR: " + repr(self.value))
+
+
 class RecordType(Enum):
     UNKNOWN = -1
     DATA = 0
@@ -24,14 +32,14 @@ class Record:
 
 def parse_line(line: str, line_n: int, file_extension: str) -> Record:
     if file_extension != ".hex":
-        raise Exception("Unsupported file format: %s" % (file_extension))
+        raise ParserError("Unsupported file format: %s" % (file_extension))
 
     return parse_hex_line(line, line_n)
 
 
 def parse_hex_line(line: str, line_n: int) -> Record:
     if line[0] != ':':
-        raise Exception("Error: unexpected record mark in line %d: %s, expect \':\', get \'%c\'" % (
+        raise ParserError("Error: unexpected record mark in line %d: %s, expect \':\', get \'%c\'" % (
             line_n, line, line[0]))
 
     datalen = int(line[1:3], base=16)               # Data field length
@@ -43,11 +51,12 @@ def parse_hex_line(line: str, line_n: int) -> Record:
     splitted_by_bytes: List[str] = []
     for i in range(datalen):
         splitted_by_bytes.append(data_bytes_line[i*2:i*2+2])
-    
+
     data_bytes = list(map(lambda x: int(x, base=16), splitted_by_bytes))
-    checksum = (datalen + int(line[3:5], base=16) + int(line[5:7], base=16) + rectype + sum(data_bytes)) % 256
+    checksum = (datalen + int(line[3:5], base=16) +
+                int(line[5:7], base=16) + rectype + sum(data_bytes)) % 256
     if (checksum + crc) % 256 != 0:
-        raise Exception("Checksum mismatch in line %d %s" % (line_n, line))
+        raise ParserError("Checksum mismatch in line %d %s" % (line_n, line))
 
     record = Record(RecordType.UNKNOWN, 0, [])
 
@@ -67,7 +76,8 @@ def parse_hex_line(line: str, line_n: int) -> Record:
         # record.data = list(map(lambda x: int(x, base=16), splitted_by_bytes))
     elif rectype == 4:  # Extended Linear Address Record
         record.type = RecordType.EXTADDR
-        record.address = data_bytes[1] * pow(256, 2) + data_bytes[0] * pow(256, 3)
+        record.address = data_bytes[1] * \
+            pow(256, 2) + data_bytes[0] * pow(256, 3)
     elif rectype == 5:  # Start Linear Address Record
         record.type = RecordType.LINEARSTARTADDR
         address = 0

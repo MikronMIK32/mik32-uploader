@@ -13,6 +13,14 @@ import mik32_debug_hal.dma as dma
 import flash_drivers.generic_flash as generic_flash
 
 
+class SpifiError(Exception):
+    def __init__(self, value):
+        self.value = value
+
+    def __str__(self):
+        return ("ERROR: " + repr(self.value))
+
+
 def spifi_intrq_clear(openocd: OpenOcdTclRpc):
     openocd.write_word(mem_map.SPIFI_CONFIG_STAT, openocd.read_word(mem_map.SPIFI_CONFIG_STAT) |
                        spifi_fields.SPIFI_CONFIG_STAT_INTRQ_M)
@@ -70,7 +78,7 @@ def spifi_wait_intrq_timeout(openocd: OpenOcdTclRpc, error_message: str):
     while time.perf_counter() < time_end:
         if (openocd.read_word(mem_map.SPIFI_CONFIG_STAT) & spifi_fields.SPIFI_CONFIG_STAT_INTRQ_M) != 0:
             return
-    raise Exception(error_message)
+    raise SpifiError(error_message)
 
 
 class Frameform(Enum):
@@ -167,7 +175,7 @@ def send_command(
 
 def write(openocd: OpenOcdTclRpc, address: int, data: List[int], data_len: int):
     if data_len > 256:
-        raise Exception("Byte count more than 256")
+        raise SpifiError("Byte count more than 256")
 
     generic_flash.page_program(openocd, address, data, data_len)
 

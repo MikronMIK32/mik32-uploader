@@ -7,7 +7,7 @@ import time
 from enum import Enum
 from typing import List, Dict, NamedTuple, Union
 from hex_parser import FirmwareFile, MemorySection, MemoryType, Segment
-from tclrpc import OpenOcdTclRpc, TclException
+from tclrpc import OpenOcdTclRpc, TclException, TclPortError
 from mik32_debug_hal.gpio import MIK32_Version, gpio_init, gpio_deinit
 import mik32_debug_hal.eeprom as eeprom
 import mik32_debug_hal.spifi as spifi
@@ -51,19 +51,6 @@ if os.name == 'nt':
     default_log_path = "nul"
 
 adapter_default_speed = 500
-
-
-def test_connection():
-    output = ""
-    with OpenOcdTclRpc() as openocd:
-        try:
-            output = openocd.run("capture \"reg\"")
-        except OSError:
-            logging.debug("Test connection timed out, try again")
-            output = openocd.run("capture \"reg\"")
-
-    if output == "":
-        raise Exception("ERROR: no regs found, check MCU connection")
 
 
 memory_page_size = {
@@ -126,12 +113,12 @@ def segments_to_pages(segments: List[Segment], page_size: int) -> Dict[int, List
     return pages
 
 
-class OpenOCDStartupException(Exception):
+class OpenOCDError(Exception):
     def __init__(self, msg):
         self.msg = msg
 
     def __repr__(self):
-        return f"OpenOCD Startup Exception: {self.msg}"
+        return f"ERROR: OpenOCD Startup Exception: {self.msg}"
 
 
 def run_openocd(
@@ -215,9 +202,9 @@ def upload_file(
         use_driver=True,
 ) -> int:
     """
-    Write ihex or binary file into MIK32 EEPROM or external flash memory
-    @filename: full path to the file with hex or bin file format
-    @return: return 0 if successful, 1 if failed
+    Запись прошивки в формате Intel HEX или бинарном в память MIK32.
+    @filename: полный путь до файла прошивки
+    @return: возвращает 0 в случае успеха, 1 - если прошивка неудачна
     """
 
     print(f"Using {mik_version.value}")
@@ -226,9 +213,13 @@ def upload_file(
 
     if not os.path.exists(filename):
         print(f"ERROR: File {filename} does not exist")
-        exit(1)
+        return 1
 
-    file = FirmwareFile(filename, mik32_sections)
+    try:
+        file = FirmwareFile(filename, mik32_sections)
+    except ParserError as e:
+        print(e)
+        return 1
 
     segments: List[Segment] = file.get_segments()
     pages: Pages = form_pages(segments, boot_mode)
@@ -244,10 +235,17 @@ def upload_file(
             logging.debug("OpenOCD started!")
 
         except OSError as e:
-            raise OpenOCDStartupException(e)
+            raise OpenOCDError(e)
     try:
         time.sleep(0.1)
         with OpenOcdTclRpc(host, port) as openocd:
+            try:
+                openocd.run("capture \"riscv.cpu curstate\"")
+            except OSError as e:
+                print("ERROR: Tcl port connection failed")
+                print("Check connectivity and OpenOCD log")
+                return 1
+            
             if (all(openocd_interface.find(i) == -1 for i in adapter_speed_not_supported)):
                 openocd.run(f"adapter speed {adapter_speed}")
             openocd.run(f"log_output \"{log_path}\"")
@@ -328,8 +326,13 @@ def upload_file(
             openocd.run(post_action)
     except ConnectionRefusedError:
         print("ERROR: The connection to OpenOCD is not established. Check the settings and connection of the debugger")
-    except TclException as e:
-        print(f"ERROR: TclException {e.code} \n {e.msg}")
+    except (OpenOCDError, TclPortError, TclException) as e:
+        print(e)
+        exit(1)
+    except ConnectionResetError as e:
+        print("ERROR: Tcl connection reset")
+        print("Check OpenOCD log")
+        print(e.strerror)
     finally:
         if proc is not None:
             proc.kill()

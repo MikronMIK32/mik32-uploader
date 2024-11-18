@@ -7,6 +7,15 @@ from dataclasses import dataclass
 import mik32_debug_hal.registers.memory_map as mem_map
 import mik32_debug_hal.registers.bitfields.dma as dma_fields
 
+
+class DmaError(Exception):
+    def __init__(self, value):
+        self.value = value
+
+    def __str__(self):
+        return ("ERROR: " + repr(self.value))
+
+
 # ReadStatus. Разрешить читать текущий статус канала
 class CurrentValue(Enum):
     ENABLE = 0  # Текущие значения
@@ -201,4 +210,4 @@ class DMA:
             if self.get_control() & mask != 0:
                 return
 
-        raise Exception
+        raise DmaError

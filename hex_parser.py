@@ -36,11 +36,11 @@ class Segment:
                 self.memory = section
 
         if self.memory is None:
-            raise Exception(
-                f"ERROR: segment with offset {self.offset:#0x} doesn't belong to any section")
+            raise ParserError(
+                f"segment with offset {self.offset:#0x} doesn't belong to any section")
 
         if (self.offset + self.data.__len__()) > (self.memory.offset + self.memory.length):
-            raise Exception(
+            raise ParserError(
                 f"ERROR: segment with offset {self.offset:#0x} "
                 f"and length {self.data.__len__()} "
                 f"overflows section {self.memory.type.name}"
@@ -75,7 +75,7 @@ class FirmwareFile:
                 bin_content = list(f.read())
                 self.segments.append(Segment(offset=0, data=bin_content, sections=sections))
         else:
-            raise Exception(f"Unsupported file format: {self.file_extension}")
+            raise ParserError(f"Unsupported file format: {self.file_extension}")
 
     def _parse_hex(self, lines: List[str], sections: List[MemorySection]): 
         segments: List[Segment] = []

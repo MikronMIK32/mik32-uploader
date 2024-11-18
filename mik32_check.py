@@ -7,7 +7,7 @@ import time
 from typing import List, Union
 
 from mik32_debug_hal.power_manager import pm_init
-from mik32_upload import BootMode, Pages, form_pages, openocd_exec_path, openocd_scripts_path, openocd_interface_path, openocd_target_path, adapter_default_speed, run_openocd, default_post_action, default_log_path, default_openocd_host, mik32_sections, OpenOCDStartupException, adapter_speed_not_supported, memory_page_size
+from mik32_upload import BootMode, Pages, form_pages, openocd_exec_path, openocd_scripts_path, openocd_interface_path, openocd_target_path, adapter_default_speed, run_openocd, default_post_action, default_log_path, default_openocd_host, mik32_sections, OpenOCDError, adapter_speed_not_supported, memory_page_size
 from mik32_debug_hal.gpio import MIK32_Version, gpio_init, gpio_deinit
 import mik32_debug_hal.eeprom as eeprom
 import mik32_debug_hal.spifi as spifi
@@ -63,7 +63,7 @@ def upload_file(
             logging.debug("OpenOCD started!")
 
         except OSError as e:
-            raise OpenOCDStartupException(e)
+            raise OpenOCDError(e)
     try:
         with OpenOcdTclRpc(host, port) as openocd:
             if (all(openocd_interface.find(i) == -1 for i in adapter_speed_not_supported)):
