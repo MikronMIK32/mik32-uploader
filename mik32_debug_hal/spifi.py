@@ -442,7 +442,7 @@ def write_pages_by_sectors(pages: Dict[int, List[int]],
     if result == 0:
         print(f"  {sectors_list[-1]:#010x} 100% OK!", flush=True)
 
-    openocd.run("rwp 0x02003800")
+    openocd.run("rwp 0x02003000")
     init_memory(openocd)
 
     if result == 0:
