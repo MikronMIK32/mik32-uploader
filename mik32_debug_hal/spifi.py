@@ -386,9 +386,15 @@ def write_pages_by_sectors(pages: Dict[int, List[int]],
 
     openocd.halt()
     openocd.run("riscv.cpu set_reg {mstatus 0 mie 0}") # Отключение прерываний
-    
+
     init(openocd)
     # openocd.run("rwp")
+
+    # Сбрасываем микросхему в режиме QPI из всех состояний в нормальный SPI режим.
+    generic_flash.chip_reset_qpi(openocd)
+
+    # Сбрасываем микросхему в режиме SPI из всех состояний в нормальный SPI режим.
+    generic_flash.chip_reset(openocd)
 
     JEDEC_ID = send_command(
         openocd, 0x9F, Frameform.OPCODE_NOADDR, Fieldform.ALL_SERIAL, 3)
