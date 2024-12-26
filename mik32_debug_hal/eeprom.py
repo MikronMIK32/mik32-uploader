@@ -5,7 +5,7 @@ import pathlib
 import sys
 from typing import Dict, List, Tuple
 import time
-from tclrpc import OpenOcdTclRpc
+from tclrpc import OpenOcdTclRpc, TclException
 from utils import bytes2words
 
 import mik32_debug_hal.registers.memory_map as mem_map
@@ -297,36 +297,62 @@ def write_memory(pages: Dict[int, List[int]], openocd: OpenOcdTclRpc, driver_pat
     # TODO: добавить проверку на версию mik32 - текущий драйвер поддерживает
     # только версию mik32v2
 
+    RAM_OFFSET = 0x02000000
+    RAM_BUFFER_OFFSET = 0x02001800
+    RAM_DRIVER_STATUS = 0x02003800
+
     bytes_list = combine_pages(pages)
     openocd.halt()
-    openocd.run("riscv.cpu set_reg {mstatus 0 mie 0}") # Отключение прерываний
+    openocd.run("riscv.cpu set_reg {mstatus 0 mie 0}")  # Отключение прерываний
 
     STATUS_CODE_M = 0xFF
 
     max_address = len(bytes_list) // 128
-    openocd.write_memory(0x02003800, 32, [1 | (max_address << 8)])
+    openocd.write_memory(RAM_DRIVER_STATUS, 32, [1 | (max_address << 8)])
 
     pathname = os.path.dirname(sys.argv[0])
-    openocd.run("wp 0x2003800 4 w")  # готовимся поймать результат записи
 
     print("Uploading driver... ", end="", flush=True)
     openocd.run(f"load_image {{{pathlib.Path(driver_path)}}}")
     print("OK!", flush=True)
 
     print("Uploading data...   ", end="", flush=True)
-    openocd.write_memory(0x02001800, 8, bytes_list)
-    print("OK!", flush=True)
+    result = openocd.write_memory(RAM_BUFFER_OFFSET, 8, bytes_list)
+    if result:
+        print("ERROR!", flush=True)
+        print("An error occurred while writing data to the buffer area!")
+        print("Aborting...", flush=True)
+        return 1
+    else:
+        print("OK!", flush=True)
+
+    # mem = openocd.read_memory(0x01000000, 8, len(bytes_list))
+    # print(f"total bytes read {len(bytes_list)}")
+
+    # for i in range(len(bytes_list)):
+    #     if bytes_list[i] != mem[i]:
+    #         print(f"RAM data mismatch at address 0x{i:08x};"
+    #               f"expect 0x{bytes_list[i]:08x} get 0x{mem[i]:08x}!", flush=True)
+    #         return 1
+
+    openocd.run(f"wp 0x{RAM_DRIVER_STATUS:08x} 4 w")  # готовимся поймать результат записи
 
     print("Run driver...", flush=True)
-    openocd.resume(0x2000000)
+    openocd.resume(RAM_OFFSET)
 
-    wait_halted(openocd, 10)        # ждем, когда watchpoint сработает
-    openocd.run("rwp 0x02003800")   # watchpoint ловит до изменения слова
+    try:
+        # ждем, когда watchpoint сработает
+        wait_halted(openocd, 10)
+    except TclException:
+        print("Timeout!", flush=True)
+        # return 1
+
+    openocd.run(f"rwp 0x{RAM_DRIVER_STATUS:08x}")   # watchpoint ловит до изменения слова
     openocd.run("step")             # делаем шаг, чтобы прочитать новое слово
 
-    result = openocd.read_memory(0x2003800, 32, 1)[0]
+    result = openocd.read_memory(RAM_DRIVER_STATUS, 32, 1)[0]
 
-    if (result & 0xFF) == 0:
+    if (result & STATUS_CODE_M) == 0:
         print(f"EEPROM writing successfully completed!", flush=True)
     else:
         miss_page = (result >> 8) & (64 - 1)

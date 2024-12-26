@@ -49,8 +49,11 @@ SPIFI_CONFIG_STAT = SPIFI_REGS + 0x01C
 PM_REGS = 0x000050000
 
 PM_Clk_AHB_Set_OFFSET = PM_REGS + 0x0C
+PM_Clk_AHB_Clear_OFFSET = PM_REGS + 0x10
 PM_Clk_APB_M_Set_OFFSET = PM_REGS + 0x14
+PM_Clk_APB_M_Clear_OFFSET = PM_REGS + 0x18
 PM_Clk_APB_P_Set_OFFSET = PM_REGS + 0x1C
+PM_Clk_APB_P_Clear_OFFSET = PM_REGS + 0x20
 
 
 # --------------------------
@@ -66,27 +69,30 @@ WU_CLOCKS_BU_OFFSET = WU_REGS + 0x10
 # --------------------------
 PAD_CONFIG_REGS = 0x00050C00
 
+
 class PAD_CONFIG_REGS_V0(Enum):
     PORT_0_CFG = 0x00
     PORT_1_CFG = 0x04
     PORT_2_CFG = 0x08
-    PORT_0_DS  = 0x0C
-    PORT_1_DS  = 0x10
-    PORT_2_DS  = 0x14
+    PORT_0_DS = 0x0C
+    PORT_1_DS = 0x10
+    PORT_2_DS = 0x14
     PORT_0_PUD = 0x18
     PORT_1_PUD = 0x1C
     PORT_2_PUD = 0x20
 
+
 class PAD_CONFIG_REGS_V2(Enum):
     PORT_0_CFG = 0x00
-    PORT_0_DS  = 0x04
+    PORT_0_DS = 0x04
     PORT_0_PUD = 0x08
     PORT_1_CFG = 0x0C
-    PORT_1_DS  = 0x10
+    PORT_1_DS = 0x10
     PORT_1_PUD = 0x14
     PORT_2_CFG = 0x18
-    PORT_2_DS  = 0x1C
+    PORT_2_DS = 0x1C
     PORT_2_PUD = 0x20
+
 
 # --------------------------
 # EEPROM register offset
