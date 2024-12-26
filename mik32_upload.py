@@ -253,7 +253,9 @@ def upload_file(
 
             logging.debug("OpenOCD configured!")
 
-            power_manager.pm_init(openocd)
+            result = power_manager.pm_init(openocd)
+            if result != 0:
+                return 1
 
             logging.debug("PM configured!")
 
