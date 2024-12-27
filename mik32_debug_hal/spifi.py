@@ -45,7 +45,6 @@ def init_periphery(openocd: OpenOcdTclRpc):
 
 
 def init(openocd: OpenOcdTclRpc):
-    print("MCU clock init", flush=True)
 
     init_periphery(openocd)
 

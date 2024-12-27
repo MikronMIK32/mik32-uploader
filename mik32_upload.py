@@ -240,6 +240,8 @@ def upload_file(
         time.sleep(0.1)
         with OpenOcdTclRpc(host, port) as openocd:
             try:
+                openocd.run(f"log_output \"{log_path}\"")
+                openocd.run(f"debug_level 1")
                 openocd.run("capture \"riscv.cpu curstate\"")
             except OSError as e:
                 print("ERROR: Tcl port connection failed")
@@ -248,8 +250,7 @@ def upload_file(
             
             if (all(openocd_interface.find(i) == -1 for i in adapter_speed_not_supported)):
                 openocd.run(f"adapter speed {adapter_speed}")
-            openocd.run(f"log_output \"{log_path}\"")
-            openocd.run(f"debug_level 1")
+            
 
             logging.debug("OpenOCD configured!")
 
