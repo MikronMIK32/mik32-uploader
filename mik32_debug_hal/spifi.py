@@ -429,7 +429,13 @@ def write_pages_by_sectors(pages: Dict[int, List[int]],
             else:
                 bytes_list.extend([0]*256)
 
-        openocd.write_memory(0x02002000, 8, bytes_list)
+        result = openocd.write_memory(0x02002000, 8, bytes_list)
+        if result:
+            print("ERROR!", flush=True)
+            print("An error occurred while writing data to the buffer area!")
+            print("Aborting...", flush=True)
+            return 1
+        
         openocd.run(f"set_reg {{t6 {sector}}}")
         openocd.resume()
         wait_halted(openocd, 10)    # ждем, когда watchpoint сработает
