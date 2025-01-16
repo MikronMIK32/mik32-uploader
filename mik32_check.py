@@ -9,11 +9,12 @@ from typing import List, Union
 from mik32_debug_hal.power_manager import pm_init
 from mik32_upload import BootMode, Pages, form_pages, openocd_exec_path, openocd_scripts_path, openocd_interface_path, openocd_target_path, adapter_default_speed, run_openocd, default_post_action, default_log_path, default_openocd_host, mik32_sections, OpenOCDError, adapter_speed_not_supported, memory_page_size
 from mik32_debug_hal.gpio import MIK32_Version, gpio_init, gpio_deinit
-import mik32_debug_hal.eeprom as eeprom
-import mik32_debug_hal.spifi as spifi
 import mik32_debug_hal.ram as ram
 from hex_parser import FirmwareFile, MemoryType, Segment
 from tclrpc import OpenOcdTclRpc, TclException
+from mik32_debug_hal.eeprom import EEPROM
+from mik32_debug_hal.spifi import SPIFI
+from flash_drivers.generic_flash import GenericFlash
 
 
 def upload_file(
@@ -78,6 +79,8 @@ def upload_file(
             logging.debug("PM configured!")
 
             if (pages.pages_eeprom.__len__() > 0):
+                eeprom = EEPROM(openocd)
+
                 start_time = time.perf_counter()
 
                 result |= eeprom.check_pages(
@@ -90,10 +93,12 @@ def upload_file(
                     f"Check {write_size} bytes in {write_time:.2f} seconds (effective {(write_size/(write_time*1024)):.1f} kbyte/s)")
             if (pages.pages_spifi.__len__() > 0):
                 gpio_init(openocd, mik_version)
+                spifi = SPIFI(openocd)
+                flash = GenericFlash(spifi)
                 start_time = time.perf_counter()
 
-                result |= spifi.check_pages(
-                    pages.pages_spifi, openocd, use_quad_spi=use_quad_spi)
+                result |= flash.check_pages(
+                    pages.pages_spifi, use_quad_spi=use_quad_spi)
 
                 write_time = time.perf_counter() - start_time
                 write_size = pages.pages_spifi.__len__(

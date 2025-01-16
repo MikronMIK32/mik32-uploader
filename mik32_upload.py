@@ -9,8 +9,9 @@ from typing import List, Dict, NamedTuple, Union
 from hex_parser import FirmwareFile, MemorySection, MemoryType, Segment
 from tclrpc import OpenOcdTclRpc, TclException, TclPortError
 from mik32_debug_hal.gpio import MIK32_Version, gpio_init, gpio_deinit
-import mik32_debug_hal.eeprom as eeprom
-import mik32_debug_hal.spifi as spifi
+from mik32_debug_hal.eeprom import EEPROM
+from mik32_debug_hal.spifi import SPIFI
+from flash_drivers.generic_flash import GenericFlash
 import mik32_debug_hal.ram as ram
 import mik32_debug_hal.power_manager as power_manager
 from _version import applicaton_version
@@ -261,12 +262,13 @@ def upload_file(
             logging.debug("PM configured!")
 
             if (pages.pages_eeprom.__len__() > 0):
+                eeprom = EEPROM(openocd)
+                
                 start_time = time.perf_counter()
 
                 if use_driver:
                     result |= eeprom.write_memory(
                         pages.pages_eeprom,
-                        openocd,
                         os.path.join(
                             default_drivers_path,
                             'jtag-eeprom',
@@ -290,12 +292,13 @@ def upload_file(
                         f"[{current_time}] Wrote {write_size} bytes in {write_time:.2f} seconds (effective {(write_size/(write_time*1024)):.1f} kbyte/s)")
             if (pages.pages_spifi.__len__() > 0):
                 gpio_init(openocd, mik_version)
+                spifi = SPIFI(openocd)
+                flash = GenericFlash(spifi)
                 start_time = time.perf_counter()
 
                 if use_driver:
-                    result |= spifi.write_pages_by_sectors(
+                    result |= flash.write_pages_by_sectors(
                         pages.pages_spifi,
-                        openocd,
                         os.path.join(
                             default_drivers_path,
                             'jtag-spifi',
@@ -304,7 +307,7 @@ def upload_file(
                         )
                     )
                 else:
-                    result |= spifi.write_pages(
+                    result |= flash.write_pages(
                         pages.pages_spifi,
                         openocd,
                         use_quad_spi=use_quad_spi
