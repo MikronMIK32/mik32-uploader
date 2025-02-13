@@ -11,6 +11,7 @@
 */
 
 #define STATUS_CODE_S 0
+#define STATUS_CODE_M 0xFF
 #define STATUS_CODE(X) ((X) << STATUS_CODE_S)
 
 #define STATUS_CODE_OK 0
@@ -50,6 +51,14 @@ int main()
     UART_Init(UART_0, 278, UART_CONTROL1_TE_M | UART_CONTROL1_M_8BIT_M, 0, 0);
     xprintf("START DRIVER\n");
 #endif
+
+    if ((*BUFFER_STATUS & STATUS_CODE_M) != STATUS_CODE(STATUS_CODE_START))
+    {
+#ifdef UART_DEBUG
+        xprintf("ERROR: BUFFER_STATUS = 0x%08x\n", *BUFFER_STATUS);
+#endif
+        goto final_loop;
+    }
 
     HAL_EEPROM_HandleTypeDef heeprom = {
         .Instance = EEPROM_REGS,
@@ -101,6 +110,8 @@ debugger_return:
 
     *BUFFER_STATUS = result;
     // asm ("wfi");
+
+final_loop:
 
     while (1)
         ;
