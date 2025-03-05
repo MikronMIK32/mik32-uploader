@@ -278,8 +278,7 @@ def upload_file(
                     )
                 else:
                     result |= eeprom.write_pages(
-                        pages.pages_eeprom,
-                        openocd
+                        pages.pages_eeprom
                     )
 
                 write_time = time.perf_counter() - start_time
