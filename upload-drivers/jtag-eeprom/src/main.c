@@ -11,12 +11,17 @@
 */
 
 #define STATUS_CODE_S 0
-#define STATUS_CODE_M 0xFF
+#define STATUS_CODE_M 0x7F
 #define STATUS_CODE(X) ((X) << STATUS_CODE_S)
 
 #define STATUS_CODE_OK 0
 #define STATUS_CODE_START 1
 #define STATUS_CODE_MISMATCH 2
+
+#define STATUS_CODE_ERASE_S 7
+#define STATUS_CODE_ERASE_M (1 << STATUS_CODE_ERASE_S)
+#define STATUS_CODE_ERASE_FULL 0
+#define STATUS_CODE_ERASE_USED STATUS_CODE_ERASE_M
 
 #define STATUS_CODE_START_PAGE_COUNT_S 8
 #define STATUS_CODE_START_PAGE_COUNT_M ((64 - 1) << STATUS_CODE_START_PAGE_COUNT_S)
@@ -30,8 +35,8 @@
 #define STATUS_CODE_MISMATCH_VALUE(X) ((X) << STATUS_CODE_MISMATCH_VALUE_S)
 
 const int BUFFER_SIZE = 8 * 1024;
-extern uint8_t *BUFFER[];
-extern uint32_t BUFFER_STATUS[];
+uint8_t *BUFFER = (uint8_t *)0x02001800;
+uint32_t *BUFFER_STATUS = (uint32_t *)0x02003800;
 
 #define EEPROM_OP_TIMEOUT 100000
 #define USART_TIMEOUT 1000
@@ -69,7 +74,27 @@ int main()
                        STATUS_CODE_START_PAGE_COUNT_S) *
                       EEPROM_PAGE_WORDS * 4;
 
-    HAL_EEPROM_Erase(&heeprom, 0, EEPROM_PAGE_WORDS, HAL_EEPROM_WRITE_ALL, EEPROM_OP_TIMEOUT);
+    if (*BUFFER_STATUS & STATUS_CODE_ERASE_USED)
+    {
+        for (uint32_t addr = 0; addr < max_address; addr += (EEPROM_PAGE_WORDS * 4))
+        {
+            HAL_EEPROM_Erase(
+                &heeprom,
+                addr,
+                EEPROM_PAGE_WORDS,
+                HAL_EEPROM_WRITE_SINGLE,
+                EEPROM_OP_TIMEOUT);
+        }
+    }
+    else
+    {
+        HAL_EEPROM_Erase(
+            &heeprom,
+            0,
+            EEPROM_PAGE_WORDS,
+            HAL_EEPROM_WRITE_ALL,
+            EEPROM_OP_TIMEOUT);
+    }
 
     for (int addr = 0; addr < max_address; addr += (EEPROM_PAGE_WORDS * 4))
     {
@@ -87,7 +112,12 @@ int main()
 
         uint8_t rb[EEPROM_PAGE_WORDS * 4] = {0};
 
-        HAL_EEPROM_Read(&heeprom, addr, (uint32_t *)rb, EEPROM_PAGE_WORDS, EEPROM_OP_TIMEOUT);
+        HAL_EEPROM_Read(
+            &heeprom,
+            addr,
+            (uint32_t *)rb,
+            EEPROM_PAGE_WORDS,
+            EEPROM_OP_TIMEOUT);
 
         for (uint32_t b = 0; b < (EEPROM_PAGE_WORDS * 4); b++)
         {
