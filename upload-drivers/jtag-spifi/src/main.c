@@ -12,9 +12,10 @@
  */
 
 // extern char __HEAP_START[];
+
 const int BUFFER4K_SIZE = 4 * 1024;
-extern uint8_t *BUFFER4K[];
-extern uint32_t *BUFFER_STATUS[];
+uint8_t *BUFFER4K = (uint8_t *)0x02002000;
+uint32_t *BUFFER_STATUS = (uint32_t *)0x2003000;
 
 register uint32_t address_reg asm("x31");
 
