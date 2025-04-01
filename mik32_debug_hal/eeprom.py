@@ -33,8 +33,9 @@ def combine_pages(pages: Dict[int, List[int]]) -> List[int]:
 class EEPROM():
     openocd: OpenOcdTclRpc
 
-    def __init__(self, openocd: OpenOcdTclRpc):
+    def __init__(self, openocd: OpenOcdTclRpc, full_erase: bool = True):
         self.openocd = openocd
+        self.full_erase = full_erase
 
         self.eeprom_sysinit()
 
@@ -195,7 +196,7 @@ class EEPROM():
             if self.eeprom_check_data_ahb_lite([0]*2048, 0, False):
                 print("EEPROM global erase failed", flush=True)
                 return 1
-            
+
         # configure cycles duration
         self.eeprom_configure_cycles(1, 3, 1, 100000, 1000)
         time.sleep(0.1)
@@ -234,16 +235,32 @@ class EEPROM():
         RAM_BUFFER_OFFSET = 0x02001800
         RAM_DRIVER_STATUS = 0x02003800
 
+        STATUS_CODE_S = 0
+        STATUS_CODE_M = 0x7F
+
+        STATUS_CODE_OK = 0
+        STATUS_CODE_START = 1
+        STATUS_CODE_MISMATCH = 2
+
+        STATUS_CODE_ERASE_S = 7
+        STATUS_CODE_ERASE_M = (1 << STATUS_CODE_ERASE_S)
+        STATUS_CODE_ERASE_FULL = 0
+        STATUS_CODE_ERASE_USED = STATUS_CODE_ERASE_M
+
         bytes_list = combine_pages(pages)
         self.openocd.halt()
         # Отключение прерываний
         self.openocd.run("riscv.cpu set_reg {mstatus 0 mie 0}")
 
-        STATUS_CODE_M = 0xFF
-
         max_address = len(bytes_list) // 128
         self.openocd.write_memory(RAM_DRIVER_STATUS, 32, [
-                                  1 | (max_address << 8)])
+            (STATUS_CODE_START << STATUS_CODE_S) |
+            (max_address << 8) |
+            (
+                STATUS_CODE_ERASE_FULL if self.full_erase
+                else STATUS_CODE_ERASE_USED << STATUS_CODE_ERASE_S
+            )
+        ])
 
         pathname = os.path.dirname(sys.argv[0])
 
@@ -281,7 +298,7 @@ class EEPROM():
 
         result = self.openocd.read_memory(RAM_DRIVER_STATUS, 32, 1)[0]
 
-        if (result & STATUS_CODE_M) == 0:
+        if (result & STATUS_CODE_M) == STATUS_CODE_OK:
             print(f"EEPROM writing successfully completed!", flush=True)
         else:
             miss_page = (result >> 8) & (64 - 1)

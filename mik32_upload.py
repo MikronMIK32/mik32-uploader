@@ -195,6 +195,7 @@ def upload_file(
         post_action=default_post_action,
         mik_version=MIK32_Version.MIK32V2,
         use_driver=True,
+        eeprom_full_erase=True,
 ) -> int:
     """
     Запись прошивки в формате Intel HEX или бинарном в память MIK32.
@@ -264,7 +265,7 @@ def upload_file(
             logging.debug("PM configured!")
 
             if (pages.pages_eeprom.__len__() > 0):
-                eeprom = EEPROM(openocd)
+                eeprom = EEPROM(openocd, full_erase=eeprom_full_erase)
                 
                 start_time = time.perf_counter()
 
@@ -462,6 +463,13 @@ def createParser():
         default=True,
         help='Отключает прошивку с использованием драйвера в ОЗУ'
     )
+    parser.add_argument(
+        '--eeprom-partial-erase',
+        dest='eeprom_full_erase',
+        action='store_false',
+        default=True,
+        help='Включает режим очистки EEPROM по страницам для режима с использованием драйвера в ОЗУ'
+    )
     return parser
 
 
@@ -492,6 +500,7 @@ if __name__ == '__main__':
                 post_action=namespace.post_action,
                 mik_version=namespace.mcu_type,
                 use_driver=namespace.use_driver,
+                eeprom_full_erase=namespace.eeprom_full_erase,
             )
         )
     else:
