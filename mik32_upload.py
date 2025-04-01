@@ -225,6 +225,11 @@ def upload_file(
     segments: List[Segment] = file.get_segments()
     pages: Pages = form_pages(segments, boot_mode)
 
+    try:
+        port = int(port)
+    except ValueError:
+        print("An integer argument --openocd-port was expected!")
+
     proc: Union[subprocess.Popen, None] = None
     if is_run_openocd:
         try:
